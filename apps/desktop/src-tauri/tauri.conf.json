@@ -1,0 +1,73 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI Desktop Pet",
+  "version": "0.1.0",
+  "identifier": "com.example.ai-desktop-pet",
+  "build": {
+    "beforeDevCommand": "cd ../web && npm run dev",
+    "beforeBuildCommand": "cd ../web && npm run build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../web/dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "AI Desktop Pet",
+        "url": "index.html",
+        "width": 189,
+        "height": 234,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "decorations": false,
+        "transparent": true
+      },
+      {
+        "label": "bubble",
+        "title": "AI Pet Bubble",
+        "url": "bubble.html",
+        "width": 320,
+        "height": 170,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "decorations": false,
+        "transparent": true,
+        "skipTaskbar": true
+      },
+      {
+        "label": "menu",
+        "title": "AI Pet Menu",
+        "url": "menu.html",
+        "width": 76,
+        "height": 140,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "decorations": false,
+        "transparent": true,
+        "skipTaskbar": true,
+        "visible": false
+      },
+      {
+        "label": "dialog",
+        "title": "AI Pet Dialog",
+        "url": "dialog.html",
+        "width": 210,
+        "height": 260,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "visibleOnAllWorkspaces": true,
+        "decorations": false,
+        "transparent": false,
+        "skipTaskbar": true,
+        "visible": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

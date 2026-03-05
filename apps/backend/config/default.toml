@@ -1,0 +1,21 @@
+[server]
+host = "127.0.0.1"
+port = 3001
+
+[database]
+path = "apps/backend/data/chat.db"
+
+[ai]
+default_provider = "deepseek"
+
+[ai.providers.deepseek]
+base_url = "https://api.deepseek.com/v1"
+api_key_env = "DEEPSEEK_API_KEY"
+api_key = ""
+model = "deepseek-chat"
+
+[ai.providers.openai]
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+api_key = ""
+model = "gpt-4o-mini"

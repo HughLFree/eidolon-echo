@@ -1,0 +1,148 @@
+openapi: 3.0.3
+info:
+  title: Desktop AI Backend API
+  version: 0.1.0
+  description: API for desktop AI pet chat and history.
+
+servers:
+  - url: http://127.0.0.1:3001
+
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/chat:
+    post:
+      summary: Send chat message and get AI reply
+      operationId: chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+      responses:
+        "200":
+          description: Chat completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+        "400":
+          description: Invalid request
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/sessions/{session_id}/messages:
+    get:
+      summary: List messages in session
+      operationId: listMessages
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: limit
+          in: query
+          required: false
+          description: 1..200, default 50
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Session messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageListResponse"
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required: [message]
+      properties:
+        session_id:
+          type: integer
+          format: int64
+          nullable: true
+        message:
+          type: string
+          minLength: 1
+
+    ChatResponse:
+      type: object
+      required: [session_id, reply]
+      properties:
+        session_id:
+          type: integer
+          format: int64
+        reply:
+          type: string
+
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    StoredMessage:
+      type: object
+      required: [id, session_id, role, content, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        session_id:
+          type: integer
+          format: int64
+        role:
+          type: string
+          example: assistant
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    MessageListResponse:
+      type: object
+      required: [session_id, messages]
+      properties:
+        session_id:
+          type: integer
+          format: int64
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoredMessage"

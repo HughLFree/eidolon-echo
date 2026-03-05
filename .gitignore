@@ -1,0 +1,8 @@
+/target
+**/target
+.DS_Store
+apps/backend/data/*.db
+apps/backend/data/*.db-*
+apps/backend/.env.local
+apps/desktop/web/node_modules
+apps/desktop/web/dist
