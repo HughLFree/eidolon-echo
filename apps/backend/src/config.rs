@@ -40,6 +40,8 @@ pub struct ProviderConfig {
 
 impl AppConfig {
     pub fn load() -> Result<Self> {
+        load_env_files();
+
         let explicit = env::var("APP_CONFIG").ok();
         let manifest_default = format!("{}/config/default.toml", env!("CARGO_MANIFEST_DIR"));
         let candidates = [
@@ -70,6 +72,26 @@ impl AppConfig {
         }
 
         Ok(cfg)
+    }
+}
+
+fn load_env_files() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let local_env = format!("{manifest_dir}/.env.local");
+    let default_env = format!("{manifest_dir}/.env");
+    let candidates = [
+        ".env.local",
+        ".env",
+        "apps/backend/.env.local",
+        "apps/backend/.env",
+        local_env.as_str(),
+        default_env.as_str(),
+    ];
+
+    for path in candidates {
+        if Path::new(path).exists() {
+            let _ = dotenvy::from_path(path);
+        }
     }
 }
 

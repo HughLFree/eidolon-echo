@@ -6,7 +6,31 @@ mod windows;
 
 use state::OverlayState;
 use std::sync::Mutex;
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::TrayIconBuilder,
+};
 use windows::bootstrap_desktop_pet;
+
+fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
+    let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let tray_menu = Menu::with_items(app, &[&quit_item])?;
+
+    let mut tray_builder = TrayIconBuilder::with_id("main-tray").menu(&tray_menu);
+    if let Some(icon) = app.default_window_icon() {
+        tray_builder = tray_builder.icon(icon.clone());
+    }
+
+    tray_builder
+        .on_menu_event(|app: &tauri::AppHandle, event| {
+            if event.id.as_ref() == "quit" {
+                app.exit(0);
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
 
 pub fn run() {
     std::panic::set_hook(Box::new(|info| {
@@ -18,6 +42,7 @@ pub fn run() {
     builder
         .manage(Mutex::new(OverlayState::default()))
         .setup(|app| {
+            setup_tray(app)?;
             let app_handle = app.handle().clone();
             bootstrap_desktop_pet(&app_handle);
             Ok(())
