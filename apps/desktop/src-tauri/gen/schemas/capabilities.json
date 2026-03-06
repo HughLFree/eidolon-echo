@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capability for desktop pet windows","local":true,"windows":["main","bubble","menu","dialog"],"permissions":["core:default"]}}
+{"default":{"identifier":"default","description":"Default capability for desktop pet windows","local":true,"windows":["main","chat","bubble","menu"],"permissions":["core:default"]}}

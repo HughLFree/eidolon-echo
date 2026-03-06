@@ -1,0 +1,52 @@
+:root {
+  --text: #f9fafb;
+  --line: rgba(209, 213, 219, 0.5);
+  --input-bg: rgba(107, 114, 128, 0.5);
+  --input-focus: rgba(107, 114, 128, 0.72);
+}
+
+* { box-sizing: border-box; }
+
+html, body, #chat-root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: transparent;
+}
+
+.chat-shell {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+}
+
+.chat-form {
+  width: 100%;
+  margin: 0;
+}
+
+.chat-form input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 12px;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--input-bg);
+  backdrop-filter: blur(4px);
+  outline: none;
+}
+
+.chat-form input::placeholder {
+  color: rgba(243, 244, 246, 0.82);
+}
+
+.chat-form input:focus {
+  background: var(--input-focus);
+}

@@ -1,6 +1,6 @@
-//! Platform dispatch layer for dialog overlay behavior.
+//! Platform dispatch layer for desktop pet floating window behavior.
 
-use tauri::{AppHandle, PhysicalPosition};
+use tauri::AppHandle;
 
 #[cfg(not(any(target_os = "macos", windows)))]
 mod fallback;
@@ -20,20 +20,6 @@ pub fn bootstrap(app: &AppHandle) -> Result<(), String> {
     platform::bootstrap(app)
 }
 
-pub fn show_chat_panel(
-    app: &AppHandle,
-    tray_pos: Option<PhysicalPosition<f64>>,
-) -> Result<(), String> {
-    platform::show_chat_panel(app, tray_pos)
-}
-
-pub fn hide_chat_panel(app: &AppHandle) -> Result<(), String> {
-    platform::hide_chat_panel(app)
-}
-
-pub fn toggle_chat_panel(
-    app: &AppHandle,
-    tray_pos: Option<PhysicalPosition<f64>>,
-) -> Result<bool, String> {
-    platform::toggle_chat_panel(app, tray_pos)
+pub fn set_overlay_always_on_top(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
+    platform::set_overlay_always_on_top(app, always_on_top)
 }

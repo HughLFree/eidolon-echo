@@ -11,6 +11,8 @@ use tauri::{
     WindowEvent,
 };
 
+const CHAT_GAP_PX: i32 = 2;
+
 fn logical_main_frame<R: tauri::Runtime>(
     main: &tauri::WebviewWindow<R>,
 ) -> Result<(LogicalPosition<f64>, LogicalSize<f64>, f64), String> {
@@ -105,6 +107,27 @@ pub fn sync_bubble_position(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+pub fn sync_chat_position(app: &AppHandle) -> Result<(), String> {
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    let chat = app
+        .get_webview_window("chat")
+        .ok_or_else(|| "chat window not found".to_string())?;
+
+    let main_pos = main.outer_position().map_err(|e| e.to_string())?;
+    let main_size = main.outer_size().map_err(|e| e.to_string())?;
+    let chat_size = chat.outer_size().map_err(|e| e.to_string())?;
+
+    let x = (main_pos.x + (main_size.width as i32 - chat_size.width as i32) / 2).max(0);
+    let y = (main_pos.y + main_size.height as i32 + CHAT_GAP_PX).max(0);
+
+    chat.set_position(Position::Physical(PhysicalPosition::new(x, y)))
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 pub fn sync_menu_position(app: &AppHandle) -> Result<(), String> {
     let overlay_state: State<Mutex<OverlayState>> = app.state();
     let (visible, mode, anchor) = {
@@ -142,12 +165,16 @@ pub fn hide_pet_windows(app: &AppHandle) -> Result<(), String> {
     let bubble = app
         .get_webview_window("bubble")
         .ok_or_else(|| "bubble window not found".to_string())?;
+    let chat = app
+        .get_webview_window("chat")
+        .ok_or_else(|| "chat window not found".to_string())?;
     let menu = app
         .get_webview_window("menu")
         .ok_or_else(|| "menu window not found".to_string())?;
 
     menu.hide().map_err(|e| e.to_string())?;
     bubble.hide().map_err(|e| e.to_string())?;
+    chat.hide().map_err(|e| e.to_string())?;
     main.hide().map_err(|e| e.to_string())?;
 
     let overlay_state: State<Mutex<OverlayState>> = app.state();
@@ -156,11 +183,6 @@ pub fn hide_pet_windows(app: &AppHandle) -> Result<(), String> {
     state.menu_mode = MenuMode::Buttons;
 
     Ok(())
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn should_ignore_dialog_blur(_app: &AppHandle) -> bool {
-    false
 }
 
 pub fn bootstrap_desktop_pet(app: &AppHandle) {
@@ -174,14 +196,22 @@ pub fn bootstrap_desktop_pet(app: &AppHandle) {
         let _ = main.set_visible_on_all_workspaces(true);
         let _ = main.set_always_on_top(true);
         let _ = sync_bubble_position(&app_handle);
+        let _ = sync_chat_position(&app_handle);
         let _ = sync_menu_position(&app_handle);
 
         main.on_window_event(move |event| {
             if matches!(event, WindowEvent::Moved(_) | WindowEvent::Resized(_)) {
                 let _ = sync_bubble_position(&app_handle);
+                let _ = sync_chat_position(&app_handle);
                 let _ = sync_menu_position(&app_handle);
             }
         });
+    }
+
+    if let Some(chat) = app.get_webview_window("chat") {
+        let _ = chat.set_visible_on_all_workspaces(true);
+        let _ = chat.set_always_on_top(true);
+        let _ = chat.set_ignore_cursor_events(false);
     }
 
     if let Some(bubble) = app.get_webview_window("bubble") {
@@ -197,22 +227,7 @@ pub fn bootstrap_desktop_pet(app: &AppHandle) {
         let _ = menu.hide();
     }
 
-    if let Some(dialog) = app.get_webview_window("dialog") {
-        let _ = dialog.hide();
-        #[cfg(not(target_os = "macos"))]
-        let dialog_handle = dialog.clone();
-        #[cfg(not(target_os = "macos"))]
-        let app_handle = app.clone();
-        #[cfg(not(target_os = "macos"))]
-        dialog.on_window_event(move |event| {
-            if matches!(event, WindowEvent::Focused(false)) {
-                if should_ignore_dialog_blur(&app_handle) {
-                    return;
-                }
-                let _ = dialog_handle.hide();
-            }
-        });
+    if let Err(error) = overlay::bootstrap(app) {
+        eprintln!("overlay bootstrap failed: {error}");
     }
-
-    let _ = overlay::bootstrap(app);
 }

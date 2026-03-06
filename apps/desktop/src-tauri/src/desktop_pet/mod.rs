@@ -54,11 +54,8 @@ pub fn run() {
             commands::menu::menu_keep_alive,
             commands::menu::open_history_panel,
             commands::menu::hide_menu_window,
-            commands::avatar::hide_pet,
-            commands::chat::hide_dialog_window,
-            commands::chat::overlay_show_chat_panel,
-            commands::chat::overlay_toggle_chat_panel,
-            commands::chat::overlay_hide_chat_panel
+            commands::overlay::set_overlay_always_on_top,
+            commands::avatar::hide_pet
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|error| {

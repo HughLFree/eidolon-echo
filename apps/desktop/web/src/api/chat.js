@@ -22,9 +22,3 @@ export async function fetchSessionMessages(baseUrl, { sessionId, limit = 50 }) {
   const response = await fetch(`${baseUrl}/api/sessions/${sessionId}/messages?limit=${limit}`);
   return await parseJsonOrThrow(response);
 }
-
-export function pickLatestAssistantOrLast(messages) {
-  const list = Array.isArray(messages) ? messages : [];
-  const latestAssistant = [...list].reverse().find((m) => m.role === "assistant");
-  return latestAssistant ?? list[list.length - 1] ?? null;
-}

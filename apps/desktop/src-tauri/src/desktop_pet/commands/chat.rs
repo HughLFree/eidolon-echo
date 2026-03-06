@@ -1,6 +1,4 @@
-//! Chat-related commands: bubble updates and dialog window show/hide toggles.
-
-use crate::overlay;
+//! Chat-related commands: bubble updates.
 
 use super::super::windows::sync_bubble_position;
 use tauri::{AppHandle, Manager};
@@ -19,25 +17,4 @@ pub fn set_bubble_text(app: AppHandle, text: String) -> Result<(), String> {
     bubble
         .eval(&format!("window.__desktopAiSetBubble({payload});"))
         .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn hide_dialog_window(app: AppHandle) -> Result<(), String> {
-    overlay::hide_chat_panel(&app)
-}
-
-#[tauri::command]
-pub fn overlay_show_chat_panel(app: AppHandle) -> Result<(), String> {
-    overlay::show_chat_panel(&app, None)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn overlay_toggle_chat_panel(app: AppHandle) -> Result<bool, String> {
-    overlay::toggle_chat_panel(&app, None)
-}
-
-#[tauri::command]
-pub fn overlay_hide_chat_panel(app: AppHandle) -> Result<(), String> {
-    overlay::hide_chat_panel(&app)
 }

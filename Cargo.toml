@@ -4,3 +4,6 @@ members = [
   "apps/desktop/src-tauri"
 ]
 resolver = "2"
+
+[workspace.dependencies]
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }

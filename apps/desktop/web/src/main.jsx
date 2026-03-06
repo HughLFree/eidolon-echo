@@ -1,27 +1,23 @@
-/** Main desktop pet UI entry: avatar interaction, chat input and bubble push flow. */
+/** Main desktop pet UI entry: avatar interaction and menu toggles. */
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import "./styles.css";
-import { BACKEND_BASE_URL } from "./config";
-import { readActiveSessionId, writeActiveSessionId } from "./session";
-import { sendChatMessage } from "./api/chat";
+import { readActiveSessionId } from "./session";
 
 const DRAG_THRESHOLD = 4;
 const KEEP_ALIVE_INTERVAL_MS = 350;
 
 function App() {
-  const [sessionId, setSessionId] = useState(null);
-  const [input, setInput] = useState("");
-  const [inputDisabled, setInputDisabled] = useState(false);
-
   const avatarRef = useRef(null);
   const dragRef = useRef({ pointerDown: false, dragStarted: false, startX: 0, startY: 0 });
   const keepAliveRef = useRef(0);
 
   useEffect(() => {
-    setSessionId(readActiveSessionId());
+    void invoke("set_overlay_always_on_top", { always_on_top: true }).catch(() => {
+      // no-op
+    });
   }, []);
 
   useEffect(() => {
@@ -34,25 +30,6 @@ function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  async function pushBubble(text) {
-    try {
-      await invoke("set_bubble_text", { text });
-    } catch (error) {
-      console.error("set_bubble_text failed:", error);
-    }
-  }
-
-  async function sendMessage(message) {
-    const effectiveSessionId = readActiveSessionId() ?? sessionId;
-    const data = await sendChatMessage(BACKEND_BASE_URL, {
-      sessionId: effectiveSessionId,
-      message
-    });
-    setSessionId(data.session_id);
-    writeActiveSessionId(data.session_id);
-    return data.reply;
-  }
 
   function avatarAnchorRect() {
     const rect = avatarRef.current?.getBoundingClientRect();
@@ -74,10 +51,7 @@ function App() {
       return;
     }
 
-    const activeSessionId = readActiveSessionId() ?? sessionId;
-    if (activeSessionId !== sessionId) {
-      setSessionId(activeSessionId);
-    }
+    const activeSessionId = readActiveSessionId();
 
     try {
       await invoke("toggle_avatar_menu", {
@@ -100,24 +74,6 @@ function App() {
       await invoke("menu_keep_alive");
     } catch {
       // no-op
-    }
-  }
-
-  async function onSubmit(event) {
-    event.preventDefault();
-    const text = input.trim();
-    if (!text) return;
-
-    setInput("");
-    setInputDisabled(true);
-
-    try {
-      const reply = await sendMessage(text);
-      await pushBubble(reply);
-    } catch (error) {
-      await pushBubble(`请求失败：${error.message}`);
-    } finally {
-      setInputDisabled(false);
     }
   }
 
@@ -161,7 +117,7 @@ function App() {
   }
 
   return (
-    <main className="pet-shell">
+    <main className="pet-shell avatar-only">
       <section className="pet-stage">
         <button
           ref={avatarRef}
@@ -181,19 +137,6 @@ function App() {
           <img src="/assets/pet/ava.png" alt="桌宠形象" draggable="false" />
         </button>
       </section>
-
-      <form className="chat-form" onSubmit={onSubmit}>
-        <input
-          id="chat-input"
-          type="text"
-          placeholder="说点什么..."
-          autoComplete="off"
-          required
-          value={input}
-          disabled={inputDisabled}
-          onChange={(e) => setInput(e.target.value)}
-        />
-      </form>
     </main>
   );
 }
