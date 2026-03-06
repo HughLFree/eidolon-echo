@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.example.ai-desktop-pet",
   "build": {
-    "beforeDevCommand": "cd ../web && npm run dev",
-    "beforeBuildCommand": "cd ../web && npm run build",
+    "beforeDevCommand": "cd /Users/hugh/mycode/desktop-ai/apps/desktop/web && npm run dev",
+    "beforeBuildCommand": "cd /Users/hugh/mycode/desktop-ai/apps/desktop/web && npm run build",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../web/dist"
   },
