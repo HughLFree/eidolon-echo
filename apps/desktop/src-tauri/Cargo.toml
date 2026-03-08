@@ -13,6 +13,7 @@ serde_json = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-nspanel.workspace = true
+objc2 = { version = "0.6.1", features = ["exception"] }
 
 [features]
 default = ["custom-protocol"]

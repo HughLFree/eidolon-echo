@@ -1,11 +1,10 @@
 //! Window utilities: position calculation, workspace behavior and startup window initialization.
 
-use crate::overlay;
-
 use super::state::{
     menu_size, AnchorRect, MenuMode, OverlayState, WindowVisibilityState, BUBBLE_GAP_PX,
     MENU_GAP_PX, SCREEN_MARGIN_PX,
 };
+use crate::overlay;
 use std::sync::Mutex;
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position,
@@ -215,23 +214,7 @@ pub fn sync_menu_position(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn hide_pet_windows(app: &AppHandle) -> Result<(), String> {
-    let main = app
-        .get_webview_window("main")
-        .ok_or_else(|| "main window not found".to_string())?;
-    let bubble = app
-        .get_webview_window("bubble")
-        .ok_or_else(|| "bubble window not found".to_string())?;
-    let chat = app
-        .get_webview_window("chat")
-        .ok_or_else(|| "chat window not found".to_string())?;
-    let menu = app
-        .get_webview_window("menu")
-        .ok_or_else(|| "menu window not found".to_string())?;
-
-    menu.hide().map_err(|e| e.to_string())?;
-    bubble.hide().map_err(|e| e.to_string())?;
-    chat.hide().map_err(|e| e.to_string())?;
-    main.hide().map_err(|e| e.to_string())?;
+    overlay::apply_visibility(app, false, false, false, false)?;
 
     let overlay_state: State<Mutex<OverlayState>> = app.state();
     let mut state = overlay_state.lock().unwrap_or_else(|e| e.into_inner());
@@ -269,10 +252,7 @@ pub fn toggle_pet_windows(app: &AppHandle) -> Result<(), String> {
             state.tray_restore_visibility = Some(current_visibility);
             state.menu_visible = false;
         }
-        menu.hide().map_err(|e| e.to_string())?;
-        bubble.hide().map_err(|e| e.to_string())?;
-        chat.hide().map_err(|e| e.to_string())?;
-        main.hide().map_err(|e| e.to_string())?;
+        overlay::apply_visibility(app, false, false, false, false)?;
         return Ok(());
     }
 
@@ -289,18 +269,13 @@ pub fn toggle_pet_windows(app: &AppHandle) -> Result<(), String> {
     });
     restore_visibility.menu = false;
 
-    if restore_visibility.main {
-        main.show().map_err(|e| e.to_string())?;
-    }
-    if restore_visibility.chat {
-        chat.show().map_err(|e| e.to_string())?;
-    }
-    if restore_visibility.bubble {
-        bubble.show().map_err(|e| e.to_string())?;
-    }
-    menu.hide().map_err(|e| e.to_string())?;
-
-    let _ = overlay::refresh_child_relationships(app);
+    overlay::apply_visibility(
+        app,
+        restore_visibility.main,
+        restore_visibility.chat,
+        restore_visibility.bubble,
+        false,
+    )?;
 
     {
         let mut state = overlay_state.lock().unwrap_or_else(|e| e.into_inner());
@@ -315,15 +290,12 @@ pub fn toggle_pet_windows(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn bootstrap_desktop_pet(app: &AppHandle) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    if let Err(error) = overlay::configure_runtime(app) {
+        eprintln!("overlay runtime configuration failed: {error}");
     }
 
     if let Some(main) = app.get_webview_window("main") {
         let app_handle = app.clone();
-        let _ = main.set_visible_on_all_workspaces(true);
-        let _ = main.set_always_on_top(true);
         let _ = sync_bubble_position(&app_handle);
         let _ = sync_chat_position(&app_handle);
         let _ = sync_menu_position(&app_handle);
@@ -335,28 +307,5 @@ pub fn bootstrap_desktop_pet(app: &AppHandle) {
                 let _ = sync_menu_position(&app_handle);
             }
         });
-    }
-
-    if let Some(chat) = app.get_webview_window("chat") {
-        let _ = chat.set_visible_on_all_workspaces(true);
-        let _ = chat.set_always_on_top(true);
-        let _ = chat.set_ignore_cursor_events(false);
-    }
-
-    if let Some(bubble) = app.get_webview_window("bubble") {
-        let _ = bubble.set_visible_on_all_workspaces(true);
-        let _ = bubble.set_ignore_cursor_events(true);
-        let _ = bubble.set_always_on_top(true);
-    }
-
-    if let Some(menu) = app.get_webview_window("menu") {
-        let _ = menu.set_visible_on_all_workspaces(true);
-        let _ = menu.set_always_on_top(true);
-        let _ = menu.set_ignore_cursor_events(false);
-        let _ = menu.hide();
-    }
-
-    if let Err(error) = overlay::bootstrap(app) {
-        eprintln!("overlay bootstrap failed: {error}");
     }
 }

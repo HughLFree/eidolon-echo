@@ -5,12 +5,36 @@ mod state;
 mod windows;
 
 use state::OverlayState;
-use std::sync::Mutex;
+use std::{sync::Mutex, thread};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
-use windows::{bootstrap_desktop_pet, toggle_pet_windows};
+use windows::{
+    bootstrap_desktop_pet, sync_bubble_position, sync_chat_position, sync_menu_position,
+    toggle_pet_windows,
+};
+
+fn bootstrap_overlay_deferred(app_handle: tauri::AppHandle) {
+    thread::spawn(move || {
+        match crate::overlay::bootstrap(&app_handle) {
+            Ok(()) => {
+                let _ = sync_bubble_position(&app_handle);
+                let _ = sync_chat_position(&app_handle);
+                let _ = sync_menu_position(&app_handle);
+            }
+            Err(error) => {
+                eprintln!("overlay bootstrap failed: {error}");
+                // Fallback so windows remain usable even if panel bootstrap fails.
+                if let Err(visibility_error) =
+                    crate::overlay::apply_visibility(&app_handle, true, true, false, false)
+                {
+                    eprintln!("overlay fallback visibility failed: {visibility_error}");
+                }
+            }
+        }
+    });
+}
 
 fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
     let toggle_item = MenuItem::with_id(app, "toggle-visibility", "Minimize/Restore", true, None::<&str>)?;
@@ -53,7 +77,11 @@ pub fn run() {
         .setup(|app| {
             setup_tray(app)?;
             let app_handle = app.handle().clone();
+            if let Err(error) = crate::overlay::prepare_startup(&app_handle) {
+                eprintln!("overlay startup preparation failed: {error}");
+            }
             bootstrap_desktop_pet(&app_handle);
+            bootstrap_overlay_deferred(app_handle);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

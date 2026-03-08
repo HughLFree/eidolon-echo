@@ -20,10 +20,24 @@ pub fn bootstrap(app: &AppHandle) -> Result<(), String> {
     platform::bootstrap(app)
 }
 
+pub fn prepare_startup(app: &AppHandle) -> Result<(), String> {
+    platform::prepare_startup(app)
+}
+
+pub fn configure_runtime(app: &AppHandle) -> Result<(), String> {
+    platform::configure_runtime(app)
+}
+
 pub fn set_overlay_always_on_top(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
     platform::set_overlay_always_on_top(app, always_on_top)
 }
 
-pub fn refresh_child_relationships(app: &AppHandle) -> Result<(), String> {
-    platform::refresh_child_relationships(app)
+pub fn apply_visibility(
+    app: &AppHandle,
+    show_main: bool,
+    show_chat: bool,
+    show_bubble: bool,
+    show_menu: bool,
+) -> Result<(), String> {
+    platform::apply_visibility(app, show_main, show_chat, show_bubble, show_menu)
 }
