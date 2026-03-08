@@ -4,11 +4,13 @@ mod ai;
 mod config;
 mod db;
 mod handlers;
+mod prompts;
 
 use ai::{AiClient, OpenAiCompatClient};
 use anyhow::{Context, Result};
 use axum::{routing::get, routing::post, Router};
 use config::AppConfig;
+use prompts::PromptConfig;
 use sqlx::SqlitePool;
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::cors::{Any, CorsLayer};
@@ -17,6 +19,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub struct AppState {
     pub pool: SqlitePool,
     pub ai_client: Arc<dyn AiClient>,
+    pub prompts: PromptConfig,
+    pub chat_history_limit: i64,
 }
 
 #[tokio::main]
@@ -43,11 +47,16 @@ async fn main() -> Result<()> {
         provider_cfg.base_url.clone(),
         api_key,
         provider_cfg.model.clone(),
+        provider_cfg.temperature,
+        provider_cfg.max_tokens,
     );
+    let prompts = PromptConfig::load()?;
 
     let state = Arc::new(AppState {
         pool,
         ai_client: Arc::new(ai_client),
+        prompts,
+        chat_history_limit: cfg.ai.chat_history_limit,
     });
 
     let cors = CorsLayer::new()

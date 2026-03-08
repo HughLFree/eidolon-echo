@@ -3,7 +3,8 @@
 use crate::overlay;
 
 use super::state::{
-    menu_size, AnchorRect, MenuMode, OverlayState, BUBBLE_GAP_PX, MENU_GAP_PX, SCREEN_MARGIN_PX,
+    menu_size, AnchorRect, MenuMode, OverlayState, WindowVisibilityState, BUBBLE_GAP_PX,
+    MENU_GAP_PX, SCREEN_MARGIN_PX,
 };
 use std::sync::Mutex;
 use tauri::{
@@ -181,6 +182,79 @@ pub fn hide_pet_windows(app: &AppHandle) -> Result<(), String> {
     let mut state = overlay_state.lock().unwrap_or_else(|e| e.into_inner());
     state.menu_visible = false;
     state.menu_mode = MenuMode::Buttons;
+
+    Ok(())
+}
+
+pub fn toggle_pet_windows(app: &AppHandle) -> Result<(), String> {
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    let bubble = app
+        .get_webview_window("bubble")
+        .ok_or_else(|| "bubble window not found".to_string())?;
+    let chat = app
+        .get_webview_window("chat")
+        .ok_or_else(|| "chat window not found".to_string())?;
+    let menu = app
+        .get_webview_window("menu")
+        .ok_or_else(|| "menu window not found".to_string())?;
+
+    let current_visibility = WindowVisibilityState {
+        main: main.is_visible().map_err(|e| e.to_string())?,
+        chat: chat.is_visible().map_err(|e| e.to_string())?,
+        bubble: bubble.is_visible().map_err(|e| e.to_string())?,
+        menu: menu.is_visible().map_err(|e| e.to_string())?,
+    };
+
+    let overlay_state: State<Mutex<OverlayState>> = app.state();
+    if current_visibility.any_visible() {
+        {
+            let mut state = overlay_state.lock().unwrap_or_else(|e| e.into_inner());
+            state.tray_restore_visibility = Some(current_visibility);
+            state.menu_visible = false;
+        }
+        menu.hide().map_err(|e| e.to_string())?;
+        bubble.hide().map_err(|e| e.to_string())?;
+        chat.hide().map_err(|e| e.to_string())?;
+        main.hide().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    let restore_visibility = {
+        let mut state = overlay_state.lock().unwrap_or_else(|e| e.into_inner());
+        state.tray_restore_visibility.take()
+    };
+
+    let mut restore_visibility = restore_visibility.unwrap_or(WindowVisibilityState {
+        main: true,
+        chat: true,
+        bubble: false,
+        menu: false,
+    });
+    restore_visibility.menu = false;
+
+    if restore_visibility.main {
+        main.show().map_err(|e| e.to_string())?;
+    }
+    if restore_visibility.chat {
+        chat.show().map_err(|e| e.to_string())?;
+    }
+    if restore_visibility.bubble {
+        bubble.show().map_err(|e| e.to_string())?;
+    }
+    menu.hide().map_err(|e| e.to_string())?;
+
+    let _ = overlay::refresh_child_relationships(app);
+
+    {
+        let mut state = overlay_state.lock().unwrap_or_else(|e| e.into_inner());
+        state.menu_visible = restore_visibility.menu;
+    }
+
+    let _ = sync_bubble_position(app);
+    let _ = sync_chat_position(app);
+    let _ = sync_menu_position(app);
 
     Ok(())
 }

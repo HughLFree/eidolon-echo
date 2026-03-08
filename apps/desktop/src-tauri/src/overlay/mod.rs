@@ -23,3 +23,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<(), String> {
 pub fn set_overlay_always_on_top(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
     platform::set_overlay_always_on_top(app, always_on_top)
 }
+
+pub fn refresh_child_relationships(app: &AppHandle) -> Result<(), String> {
+    platform::refresh_child_relationships(app)
+}

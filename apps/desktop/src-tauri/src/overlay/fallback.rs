@@ -19,3 +19,8 @@ pub fn set_overlay_always_on_top(app: &AppHandle, always_on_top: bool) -> Result
     }
     Ok(())
 }
+
+pub fn refresh_child_relationships(app: &AppHandle) -> Result<(), String> {
+    let _ = app;
+    Ok(())
+}

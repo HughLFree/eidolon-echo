@@ -10,11 +10,12 @@ use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
-use windows::bootstrap_desktop_pet;
+use windows::{bootstrap_desktop_pet, toggle_pet_windows};
 
 fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
+    let toggle_item = MenuItem::with_id(app, "toggle-visibility", "Minimize/Restore", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let tray_menu = Menu::with_items(app, &[&quit_item])?;
+    let tray_menu = Menu::with_items(app, &[&toggle_item, &quit_item])?;
 
     let mut tray_builder = TrayIconBuilder::with_id("main-tray").menu(&tray_menu);
     if let Some(icon) = app.default_window_icon() {
@@ -23,8 +24,16 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
 
     tray_builder
         .on_menu_event(|app: &tauri::AppHandle, event| {
-            if event.id.as_ref() == "quit" {
-                app.exit(0);
+            match event.id.as_ref() {
+                "toggle-visibility" => {
+                    if let Err(error) = toggle_pet_windows(app) {
+                        eprintln!("toggle tray visibility failed: {error}");
+                    }
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
             }
         })
         .build(app)?;

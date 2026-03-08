@@ -126,6 +126,20 @@ export OPENAI_API_KEY="你的 OpenAI Key"
 - 默认配置在 `apps/backend/config/default.toml`
 - 默认 provider 是 `deepseek`
 - `api_key` 为空时会读取 `api_key_env` 指定环境变量
+- `ai.chat_history_limit` 控制每次发给模型的历史消息条数（默认 12）
+- `ai.providers.<provider>.temperature` 控制采样温度（默认 0.7）
+- `ai.providers.<provider>.max_tokens` 控制回复最大 token（可选，默认不限制）
+
+可选：配置系统指令和上下文 prompt（后端会自动注入到每次 `/api/chat` 请求）：
+
+```bash
+cp apps/backend/prompts/system_prompt.example.md apps/backend/prompts/system_prompt.local.md
+cp apps/backend/prompts/context_prompt.example.md apps/backend/prompts/context_prompt.local.md
+```
+
+- 默认读取：`apps/backend/prompts/system_prompt.local.md` 和 `apps/backend/prompts/context_prompt.local.md`
+- 也可通过环境变量覆盖路径：`SYSTEM_PROMPT_FILE`、`CONTEXT_PROMPT_FILE`
+- `.local` prompt 文件已加入 `.gitignore`
 
 ### 3) 启动后端
 

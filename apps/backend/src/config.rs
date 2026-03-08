@@ -25,6 +25,8 @@ pub struct DatabaseConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct AiConfig {
     pub default_provider: String,
+    #[serde(default = "default_chat_history_limit")]
+    pub chat_history_limit: i64,
     pub providers: HashMap<String, ProviderConfig>,
 }
 
@@ -36,6 +38,10 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub api_key_env: Option<String>,
     pub model: String,
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
 }
 
 impl AppConfig {
@@ -70,9 +76,30 @@ impl AppConfig {
                 cfg.ai.default_provider
             );
         }
+        if cfg.ai.chat_history_limit <= 0 {
+            bail!("ai.chat_history_limit must be greater than 0");
+        }
+        for (provider_name, provider_cfg) in &cfg.ai.providers {
+            if !(0.0..=2.0).contains(&provider_cfg.temperature) {
+                bail!(
+                    "ai.providers.{provider_name}.temperature must be between 0.0 and 2.0"
+                );
+            }
+            if matches!(provider_cfg.max_tokens, Some(0)) {
+                bail!("ai.providers.{provider_name}.max_tokens must be greater than 0");
+            }
+        }
 
         Ok(cfg)
     }
+}
+
+fn default_chat_history_limit() -> i64 {
+    12
+}
+
+fn default_temperature() -> f32 {
+    0.7
 }
 
 fn load_env_files() {

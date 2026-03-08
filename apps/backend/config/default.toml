@@ -7,15 +7,20 @@ path = "apps/backend/data/chat.db"
 
 [ai]
 default_provider = "deepseek"
+chat_history_limit = 12
 
 [ai.providers.deepseek]
 base_url = "https://api.deepseek.com/v1"
 api_key_env = "DEEPSEEK_API_KEY"
 api_key = ""
 model = "deepseek-chat"
+temperature = 0.7
+# max_tokens = 512
 
 [ai.providers.openai]
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
 api_key = ""
 model = "gpt-4o-mini"
+temperature = 0.7
+# max_tokens = 512

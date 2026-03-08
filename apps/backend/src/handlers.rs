@@ -53,9 +53,48 @@ pub async fn chat(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
-    if payload.message.trim().is_empty() {
+    let user_message = payload.message.trim();
+    if user_message.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "message is empty".to_string()));
     }
+
+    let history = match payload.session_id {
+        Some(session_id) => db::list_messages(&state.pool, session_id, state.chat_history_limit)
+            .await
+            .map_err(internal_error)?,
+        None => Vec::new(),
+    };
+
+    let mut ai_messages: Vec<ChatMessage> = Vec::with_capacity(history.len() + 3);
+
+    if let Some(system_prompt) = state.prompts.system_prompt.as_deref() {
+        ai_messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+        });
+    }
+
+    if let Some(context_prompt) = state.prompts.context_prompt.as_deref() {
+        ai_messages.push(ChatMessage {
+            role: "system".to_string(),
+            content: context_prompt.to_string(),
+        });
+    }
+
+    ai_messages.extend(history.iter().map(|m| ChatMessage {
+        role: m.role.clone(),
+        content: m.content.clone(),
+    }));
+    ai_messages.push(ChatMessage {
+        role: "user".to_string(),
+        content: user_message.to_string(),
+    });
+
+    let reply = state
+        .ai_client
+        .chat(&ai_messages)
+        .await
+        .map_err(internal_error)?;
 
     let session_id = match payload.session_id {
         Some(v) => v,
@@ -64,29 +103,7 @@ pub async fn chat(
             .map_err(internal_error)?,
     };
 
-    db::save_message(&state.pool, session_id, "user", payload.message.trim())
-        .await
-        .map_err(internal_error)?;
-
-    let history = db::list_messages(&state.pool, session_id, 30)
-        .await
-        .map_err(internal_error)?;
-
-    let ai_messages: Vec<ChatMessage> = history
-        .iter()
-        .map(|m| ChatMessage {
-            role: m.role.clone(),
-            content: m.content.clone(),
-        })
-        .collect();
-
-    let reply = state
-        .ai_client
-        .chat(&ai_messages)
-        .await
-        .map_err(internal_error)?;
-
-    db::save_message(&state.pool, session_id, "assistant", &reply)
+    db::save_message_pair(&state.pool, session_id, user_message, &reply)
         .await
         .map_err(internal_error)?;
 

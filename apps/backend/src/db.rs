@@ -50,25 +50,35 @@ pub async fn create_session(pool: &SqlitePool) -> Result<i64> {
     Ok(res.last_insert_rowid())
 }
 
-pub async fn save_message(
+pub async fn save_message_pair(
     pool: &SqlitePool,
     session_id: i64,
-    role: &str,
-    content: &str,
-) -> Result<i64> {
-    let res = sqlx::query("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)")
+    user_content: &str,
+    assistant_content: &str,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)")
         .bind(session_id)
-        .bind(role)
-        .bind(content)
-        .execute(pool)
+        .bind("user")
+        .bind(user_content)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("INSERT INTO messages (session_id, role, content) VALUES (?, ?, ?)")
+        .bind(session_id)
+        .bind("assistant")
+        .bind(assistant_content)
+        .execute(&mut *tx)
         .await?;
 
     sqlx::query("UPDATE sessions SET updated_at = datetime('now') WHERE id = ?")
         .bind(session_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
-    Ok(res.last_insert_rowid())
+    tx.commit().await?;
+    Ok(())
 }
 
 pub async fn list_messages(

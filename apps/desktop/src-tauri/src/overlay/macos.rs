@@ -94,7 +94,7 @@ fn configure_all_panels(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn attach_child_panels(app: &AppHandle) -> Result<(), String> {
+fn attach_child_panels(app: &AppHandle, hide_menu_initially: bool) -> Result<(), String> {
     let main_panel = app
         .get_webview_panel("main")
         .map_err(|_| "panel 'main' not found".to_string())?;
@@ -104,7 +104,7 @@ fn attach_child_panels(app: &AppHandle) -> Result<(), String> {
             .get_webview_panel(label)
             .map_err(|_| format!("panel '{label}' not found"))?;
 
-        if *label == "menu" {
+        if *label == "menu" && hide_menu_initially {
             child_panel.hide();
         }
 
@@ -118,7 +118,7 @@ fn attach_child_panels(app: &AppHandle) -> Result<(), String> {
                 );
         }
 
-        if *label == "menu" {
+        if *label == "menu" && hide_menu_initially {
             child_panel.hide();
         }
 
@@ -149,12 +149,16 @@ pub fn bootstrap(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let result = run_on_main_thread_sync(app, |app_handle| {
         configure_all_panels(&app_handle)?;
-        attach_child_panels(&app_handle)
+        attach_child_panels(&app_handle, true)
     });
     if result.is_ok() {
         eprintln!("overlay bootstrap succeeded on macOS");
     }
     result
+}
+
+pub fn refresh_child_relationships(app: &AppHandle) -> Result<(), String> {
+    run_on_main_thread_sync(app, |app_handle| attach_child_panels(&app_handle, false))
 }
 
 pub fn set_overlay_always_on_top(app: &AppHandle, always_on_top: bool) -> Result<(), String> {

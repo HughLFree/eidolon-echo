@@ -32,12 +32,27 @@ impl Default for MenuMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WindowVisibilityState {
+    pub main: bool,
+    pub chat: bool,
+    pub bubble: bool,
+    pub menu: bool,
+}
+
+impl WindowVisibilityState {
+    pub fn any_visible(self) -> bool {
+        self.main || self.chat || self.bubble || self.menu
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct OverlayState {
     pub anchor: Option<AnchorRect>,
     pub session_id: Option<i64>,
     pub menu_visible: bool,
     pub menu_mode: MenuMode,
+    pub tray_restore_visibility: Option<WindowVisibilityState>,
 }
 
 #[derive(Debug, Clone, Serialize)]

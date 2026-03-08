@@ -12,6 +12,8 @@ pub struct OpenAiCompatClient {
     base_url: String,
     api_key: String,
     model: String,
+    temperature: f32,
+    max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -19,6 +21,8 @@ struct ChatCompletionRequest {
     model: String,
     messages: Vec<ReqMessage>,
     temperature: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,12 +47,20 @@ struct RespMessage {
 }
 
 impl OpenAiCompatClient {
-    pub fn new(base_url: String, api_key: String, model: String) -> Self {
+    pub fn new(
+        base_url: String,
+        api_key: String,
+        model: String,
+        temperature: f32,
+        max_tokens: Option<u32>,
+    ) -> Self {
         Self {
             http: Client::new(),
             base_url,
             api_key,
             model,
+            temperature,
+            max_tokens,
         }
     }
 }
@@ -66,7 +78,8 @@ impl AiClient for OpenAiCompatClient {
                     content: m.content.clone(),
                 })
                 .collect(),
-            temperature: 0.7,
+            temperature: self.temperature,
+            max_tokens: self.max_tokens,
         };
 
         let resp = self
