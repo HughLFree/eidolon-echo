@@ -8,8 +8,8 @@ use super::state::{
 };
 use std::sync::Mutex;
 use tauri::{
-    AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, Position, Size, State,
-    WindowEvent,
+    AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position,
+    Size, State, WindowEvent,
 };
 
 const CHAT_GAP_PX: i32 = 2;
@@ -35,6 +35,25 @@ fn monitor_logical_bounds<R: tauri::Runtime>(
     fallback_pos: LogicalPosition<f64>,
     fallback_size: LogicalSize<f64>,
 ) -> Result<(f64, f64, f64, f64), String> {
+    let center_x = fallback_pos.x + fallback_size.width / 2.0;
+    let center_y = fallback_pos.y + fallback_size.height / 2.0;
+
+    // Prefer monitor bounds resolved by window center. `current_monitor` may lag
+    // right after cross-display drags and produce initial menu misplacement.
+    for monitor in main.available_monitors().map_err(|e| e.to_string())? {
+        let scale = monitor.scale_factor();
+        let pos = monitor.position().to_logical::<f64>(scale);
+        let size = monitor.size().to_logical::<f64>(scale);
+        let left = pos.x;
+        let top = pos.y;
+        let right = pos.x + size.width;
+        let bottom = pos.y + size.height;
+
+        if center_x >= left && center_x <= right && center_y >= top && center_y <= bottom {
+            return Ok((left, top, right, bottom));
+        }
+    }
+
     if let Some(monitor) = main.current_monitor().map_err(|e| e.to_string())? {
         let scale = monitor.scale_factor();
         let pos = monitor.position().to_logical::<f64>(scale);
@@ -47,6 +66,30 @@ fn monitor_logical_bounds<R: tauri::Runtime>(
         fallback_pos.y,
         fallback_pos.x + fallback_size.width,
         fallback_pos.y + fallback_size.height,
+    ))
+}
+
+fn monitor_physical_bounds<R: tauri::Runtime>(
+    main: &tauri::WebviewWindow<R>,
+    fallback_pos: PhysicalPosition<i32>,
+    fallback_size: PhysicalSize<u32>,
+) -> Result<(i32, i32, i32, i32), String> {
+    if let Some(monitor) = main.current_monitor().map_err(|e| e.to_string())? {
+        let pos = monitor.position();
+        let size = monitor.size();
+        return Ok((
+            pos.x,
+            pos.y,
+            pos.x + size.width as i32,
+            pos.y + size.height as i32,
+        ));
+    }
+
+    Ok((
+        fallback_pos.x,
+        fallback_pos.y,
+        fallback_pos.x + fallback_size.width as i32,
+        fallback_pos.y + fallback_size.height as i32,
     ))
 }
 
@@ -98,8 +141,14 @@ pub fn sync_bubble_position(app: &AppHandle) -> Result<(), String> {
     let main_size = main.outer_size().map_err(|e| e.to_string())?;
     let bubble_size = bubble.outer_size().map_err(|e| e.to_string())?;
 
-    let x = (main_pos.x + (main_size.width as i32 - bubble_size.width as i32) / 2).max(0);
-    let y = (main_pos.y - bubble_size.height as i32 - BUBBLE_GAP_PX).max(0);
+    let (screen_left, screen_top, screen_right, screen_bottom) =
+        monitor_physical_bounds(&main, main_pos, main_size)?;
+    let max_x = screen_right - bubble_size.width as i32;
+    let max_y = screen_bottom - bubble_size.height as i32;
+
+    let x = (main_pos.x + (main_size.width as i32 - bubble_size.width as i32) / 2)
+        .clamp(screen_left, max_x);
+    let y = (main_pos.y - bubble_size.height as i32 - BUBBLE_GAP_PX).clamp(screen_top, max_y);
 
     bubble
         .set_position(Position::Physical(PhysicalPosition::new(x, y)))
@@ -120,8 +169,14 @@ pub fn sync_chat_position(app: &AppHandle) -> Result<(), String> {
     let main_size = main.outer_size().map_err(|e| e.to_string())?;
     let chat_size = chat.outer_size().map_err(|e| e.to_string())?;
 
-    let x = (main_pos.x + (main_size.width as i32 - chat_size.width as i32) / 2).max(0);
-    let y = (main_pos.y + main_size.height as i32 + CHAT_GAP_PX).max(0);
+    let (screen_left, screen_top, screen_right, screen_bottom) =
+        monitor_physical_bounds(&main, main_pos, main_size)?;
+    let max_x = screen_right - chat_size.width as i32;
+    let max_y = screen_bottom - chat_size.height as i32;
+
+    let x = (main_pos.x + (main_size.width as i32 - chat_size.width as i32) / 2)
+        .clamp(screen_left, max_x);
+    let y = (main_pos.y + main_size.height as i32 + CHAT_GAP_PX).clamp(screen_top, max_y);
 
     chat.set_position(Position::Physical(PhysicalPosition::new(x, y)))
         .map_err(|e| e.to_string())?;
