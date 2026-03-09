@@ -42,6 +42,7 @@ pub async fn init_pool(path: &str) -> Result<SqlitePool> {
     Ok(pool)
 }
 
+#[allow(dead_code)]
 pub async fn create_session(pool: &SqlitePool) -> Result<i64> {
     let res = sqlx::query("INSERT INTO sessions (title) VALUES (?)")
         .bind("新会话")
@@ -50,6 +51,7 @@ pub async fn create_session(pool: &SqlitePool) -> Result<i64> {
     Ok(res.last_insert_rowid())
 }
 
+#[allow(dead_code)]
 pub async fn save_message_pair(
     pool: &SqlitePool,
     session_id: i64,
@@ -96,6 +98,47 @@ pub async fn list_messages(
         "#,
     )
     .bind(session_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut messages = Vec::with_capacity(rows.len());
+    for row in rows {
+        let created_at_raw: String = row.get("created_at");
+        let dt = DateTime::parse_from_rfc3339(&format!("{}Z", created_at_raw.replace(' ', "T")))
+            .map(|v| v.with_timezone(&Utc))
+            .unwrap_or_else(|_| Utc::now());
+
+        messages.push(StoredMessage {
+            id: row.get("id"),
+            session_id: row.get("session_id"),
+            role: row.get("role"),
+            content: row.get("content"),
+            created_at: dt,
+        });
+    }
+
+    messages.reverse();
+    Ok(messages)
+}
+
+pub async fn list_messages_before_id(
+    pool: &SqlitePool,
+    session_id: i64,
+    before_id: i64,
+    limit: i64,
+) -> Result<Vec<StoredMessage>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, session_id, role, content, created_at
+        FROM messages
+        WHERE session_id = ? AND id < ?
+        ORDER BY id DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(session_id)
+    .bind(before_id)
     .bind(limit)
     .fetch_all(pool)
     .await?;

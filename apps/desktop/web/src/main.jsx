@@ -1,8 +1,9 @@
 /** Main desktop pet UI entry: avatar interaction and menu toggles. */
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
 import { readActiveSessionId } from "./session";
 
@@ -13,6 +14,8 @@ function App() {
   const avatarRef = useRef(null);
   const dragRef = useRef({ pointerDown: false, dragStarted: false, startX: 0, startY: 0 });
   const keepAliveRef = useRef(0);
+  const [avatarPng, setAvatarPng] = useState("/assets/pet/ava.png");
+  const [aiMode, setAiMode] = useState("default");
 
   useEffect(() => {
     void invoke("set_overlay_always_on_top", { always_on_top: true }).catch(() => {
@@ -29,6 +32,45 @@ function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    let unlistenMode;
+
+    const bootstrap = async () => {
+      try {
+        const current = await invoke("get_ai_mode");
+        if (typeof current?.mode === "string") {
+          setAiMode(current.mode);
+        }
+        if (typeof current?.avatarPng === "string") {
+          setAvatarPng(current.avatarPng);
+        } else if (typeof current?.avatar_png === "string") {
+          setAvatarPng(current.avatar_png);
+        }
+      } catch {
+        // no-op
+      }
+
+      unlistenMode = await listen("ai:mode-changed", (event) => {
+        const nextMode = event.payload?.mode;
+        if (typeof nextMode === "string") {
+          setAiMode(nextMode);
+        }
+        const avatar = event.payload?.avatarPng ?? event.payload?.avatar_png;
+        if (typeof avatar === "string") {
+          setAvatarPng(avatar);
+        }
+      });
+    };
+
+    void bootstrap();
+
+    return () => {
+      if (unlistenMode) {
+        unlistenMode();
+      }
+    };
   }, []);
 
   function avatarAnchorRect() {
@@ -51,7 +93,15 @@ function App() {
       return;
     }
 
-    const activeSessionId = readActiveSessionId();
+    let activeSessionId = null;
+    try {
+      activeSessionId = await invoke("get_active_session_id", { mode: aiMode });
+    } catch {
+      // no-op
+    }
+    if (typeof activeSessionId !== "number") {
+      activeSessionId = readActiveSessionId(aiMode);
+    }
 
     try {
       await invoke("toggle_avatar_menu", {
@@ -134,7 +184,7 @@ function App() {
           onPointerUp={onPointerEnd}
           onPointerCancel={onPointerEnd}
         >
-          <img src="/assets/pet/ava.png" alt="桌宠形象" draggable="false" />
+          <img src={avatarPng} alt="桌宠形象" draggable="false" />
         </button>
       </section>
     </main>

@@ -70,6 +70,19 @@ paths:
             format: int64
             minimum: 1
             maximum: 200
+        - name: mode
+          in: query
+          required: false
+          description: `default` or `roleplay`, default is `default`
+          schema:
+            $ref: "#/components/schemas/AiRoleMode"
+        - name: before_id
+          in: query
+          required: false
+          description: load older records where `id < before_id`
+          schema:
+            type: integer
+            format: int64
       responses:
         "200":
           description: Session messages
@@ -94,19 +107,27 @@ components:
           type: integer
           format: int64
           nullable: true
+        mode:
+          $ref: "#/components/schemas/AiRoleMode"
         message:
           type: string
           minLength: 1
 
     ChatResponse:
       type: object
-      required: [session_id, reply]
+      required: [session_id, mode, reply]
       properties:
         session_id:
           type: integer
           format: int64
+        mode:
+          $ref: "#/components/schemas/AiRoleMode"
         reply:
           type: string
+
+    AiRoleMode:
+      type: string
+      enum: [default, roleplay]
 
     HealthResponse:
       type: object

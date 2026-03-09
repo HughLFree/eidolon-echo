@@ -1,5 +1,6 @@
 //! Tauri command modules grouped by interaction domain (avatar, chat, menu).
 
+pub mod ai;
 pub mod avatar;
 pub mod chat;
 pub mod menu;

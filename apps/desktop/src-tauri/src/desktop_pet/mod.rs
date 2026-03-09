@@ -4,11 +4,12 @@ mod commands;
 mod state;
 mod windows;
 
-use state::OverlayState;
+use state::{AiModePayload, AiRoleMode, OverlayState};
 use std::{sync::Mutex, thread};
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, SubmenuBuilder},
     tray::TrayIconBuilder,
+    Emitter, Manager,
 };
 use windows::{
     bootstrap_desktop_pet, sync_bubble_position, sync_chat_position, sync_menu_position,
@@ -36,10 +37,49 @@ fn bootstrap_overlay_deferred(app_handle: tauri::AppHandle) {
     });
 }
 
+fn set_ai_role_mode(app: &tauri::AppHandle, mode: AiRoleMode) -> Result<(), String> {
+    let payload = {
+        let overlay_state: tauri::State<Mutex<OverlayState>> = app.state();
+        let mut overlay = overlay_state.lock().unwrap_or_else(|e| e.into_inner());
+        if overlay.ai_role_mode == mode {
+            None
+        } else {
+            overlay.ai_role_mode = mode;
+            Some(AiModePayload::from(mode))
+        }
+    };
+
+    if let Some(payload) = payload {
+        app.emit("ai:mode-changed", payload)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
-    let toggle_item = MenuItem::with_id(app, "toggle-visibility", "Minimize/Restore", true, None::<&str>)?;
+    let mode_default_item =
+        CheckMenuItem::with_id(app, "ai-mode-default", "默认模式", true, true, None::<&str>)?;
+    let mode_roleplay_item = CheckMenuItem::with_id(
+        app,
+        "ai-mode-roleplay",
+        "扮演模式",
+        true,
+        false,
+        None::<&str>,
+    )?;
+    let mode_submenu = SubmenuBuilder::with_id(app, "ai-mode-submenu", "角色模式")
+        .items(&[&mode_default_item, &mode_roleplay_item])
+        .build()?;
+    let toggle_item = MenuItem::with_id(
+        app,
+        "toggle-visibility",
+        "Minimize/Restore",
+        true,
+        None::<&str>,
+    )?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let tray_menu = Menu::with_items(app, &[&toggle_item, &quit_item])?;
+    let tray_menu = Menu::with_items(app, &[&mode_submenu, &toggle_item, &quit_item])?;
 
     let mut tray_builder = TrayIconBuilder::with_id("main-tray").menu(&tray_menu);
     if let Some(icon) = app.default_window_icon() {
@@ -47,8 +87,22 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
     }
 
     tray_builder
-        .on_menu_event(|app: &tauri::AppHandle, event| {
-            match event.id.as_ref() {
+        .on_menu_event(
+            move |app: &tauri::AppHandle, event| match event.id.as_ref() {
+                "ai-mode-default" => {
+                    if let Err(error) = set_ai_role_mode(app, AiRoleMode::Default) {
+                        eprintln!("set tray ai mode failed: {error}");
+                    }
+                    let _ = mode_default_item.set_checked(true);
+                    let _ = mode_roleplay_item.set_checked(false);
+                }
+                "ai-mode-roleplay" => {
+                    if let Err(error) = set_ai_role_mode(app, AiRoleMode::Roleplay) {
+                        eprintln!("set tray ai mode failed: {error}");
+                    }
+                    let _ = mode_default_item.set_checked(false);
+                    let _ = mode_roleplay_item.set_checked(true);
+                }
                 "toggle-visibility" => {
                     if let Err(error) = toggle_pet_windows(app) {
                         eprintln!("toggle tray visibility failed: {error}");
@@ -58,8 +112,8 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
                     app.exit(0);
                 }
                 _ => {}
-            }
-        })
+            },
+        )
         .build(app)?;
 
     Ok(())
@@ -85,6 +139,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::ai::get_ai_mode,
+            commands::ai::get_active_session_id,
+            commands::ai::set_active_session_id,
             commands::avatar::start_window_drag,
             commands::chat::set_bubble_text,
             commands::menu::toggle_avatar_menu,

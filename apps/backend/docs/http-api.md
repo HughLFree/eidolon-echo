@@ -23,6 +23,7 @@ OpenAPI: `GET /api/openapi.yaml`
 ```json
 {
   "session_id": 1,
+  "mode": "default",
   "message": "你好"
 }
 ```
@@ -32,12 +33,14 @@ OpenAPI: `GET /api/openapi.yaml`
 ```json
 {
   "session_id": 1,
+  "mode": "default",
   "reply": "你好！"
 }
 ```
 
 Notes:
-- If `session_id` is `null` or omitted, backend creates a new session.
+- `mode` is optional: `default` or `roleplay` (`default` by default).
+- If `session_id` is `null` or omitted, backend creates an in-memory session id.
 - Empty `message` returns `400`.
 
 ## Session Messages
@@ -45,6 +48,9 @@ Notes:
 - Method: `GET`
 - Path: `/api/sessions/{session_id}/messages`
 - Query: `limit` (optional, `1..200`, default `50`)
+- Query: `mode` (optional, `default` or `roleplay`, default `default`)
+- Query: `before_id` (optional, load older records where `id < before_id`)
+- Order: newest first (latest message at top)
 - Response:
 
 ```json

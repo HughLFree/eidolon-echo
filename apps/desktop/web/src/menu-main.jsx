@@ -6,22 +6,29 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./menu.css";
 import { BACKEND_BASE_URL } from "./config";
-import { writeActiveSessionId } from "./session";
+import { readActiveSessionId, writeActiveSessionId } from "./session";
 import { fetchSessionMessages } from "./api/chat";
 
 const AUTO_HIDE_MS = 5000;
 const FADE_MS = 200;
+const HISTORY_PAGE_SIZE = 10;
 
 function MenuApp() {
   const [mode, setMode] = useState("menu");
   const [fading, setFading] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [historyCursor, setHistoryCursor] = useState(null);
+  const [hasMoreHistory, setHasMoreHistory] = useState(false);
+  const [aiMode, setAiMode] = useState("default");
 
   const hideTimerRef = useRef(null);
   const fadeTimerRef = useRef(null);
   const modeRef = useRef("menu");
+  const aiModeRef = useRef("default");
+  const historyListRef = useRef(null);
 
   function clearTimers() {
     if (hideTimerRef.current) {
@@ -55,17 +62,78 @@ function MenuApp() {
     }, AUTO_HIDE_MS);
   }
 
-  async function loadRecentHistory() {
-    if (!sessionId) {
-      setMessages([]);
+  function resetHistoryState() {
+    setMessages([]);
+    setHistoryCursor(null);
+    setHasMoreHistory(false);
+    setLoadingMoreHistory(false);
+  }
+
+  async function loadHistoryPage({ reset = false } = {}) {
+    let effectiveSessionId = sessionId;
+    if (typeof effectiveSessionId !== "number") {
+      try {
+        const sid = await invoke("get_active_session_id", { mode: aiModeRef.current });
+        if (typeof sid === "number") {
+          effectiveSessionId = sid;
+          setSessionId(sid);
+        }
+      } catch {
+        // no-op
+      }
+    }
+
+    if (typeof effectiveSessionId !== "number") {
+      resetHistoryState();
       return;
     }
 
+    if (!reset) {
+      if (!hasMoreHistory || loadingMoreHistory) {
+        return;
+      }
+      setLoadingMoreHistory(true);
+    }
+
+    const beforeId = reset ? null : historyCursor;
     const data = await fetchSessionMessages(BACKEND_BASE_URL, {
-      sessionId,
-      limit: 10
+      sessionId: effectiveSessionId,
+      limit: HISTORY_PAGE_SIZE,
+      mode: aiModeRef.current,
+      beforeId
     });
-    setMessages(data.messages || []);
+    const batch = Array.isArray(data.messages) ? data.messages : [];
+    const nextCursor = batch.length ? batch[batch.length - 1]?.id ?? null : null;
+    const hasMore = batch.length >= HISTORY_PAGE_SIZE;
+
+    if (reset) {
+      setMessages(batch);
+      setHistoryCursor(nextCursor);
+      setHasMoreHistory(hasMore);
+      return;
+    }
+
+    setMessages((prev) => {
+      const known = new Set(prev.map((item) => item.id));
+      const append = batch.filter((item) => !known.has(item.id));
+      return [...prev, ...append];
+    });
+    setHistoryCursor(nextCursor);
+    setHasMoreHistory(hasMore);
+  }
+
+  function onHistoryScroll(event) {
+    if (modeRef.current !== "history") {
+      return;
+    }
+    const el = event.currentTarget;
+    const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 16;
+    if (!nearBottom) {
+      return;
+    }
+    void loadHistoryPage({ reset: false }).finally(() => {
+      setLoadingMoreHistory(false);
+    });
   }
 
   async function onHistoryClick() {
@@ -74,11 +142,14 @@ function MenuApp() {
 
     try {
       await invoke("open_history_panel");
-      await loadRecentHistory();
+      resetHistoryState();
+      await loadHistoryPage({ reset: true });
       setMode("history");
       modeRef.current = "history";
     } catch (error) {
       setMessages([{ role: "assistant", content: `加载失败：${error.message}` }]);
+      setHistoryCursor(null);
+      setHasMoreHistory(false);
       setMode("history");
       modeRef.current = "history";
     } finally {
@@ -103,7 +174,7 @@ function MenuApp() {
     }
     setMode("menu");
     modeRef.current = "menu";
-    setMessages([]);
+    resetHistoryState();
     setFading(false);
     clearTimers();
   }
@@ -111,22 +182,68 @@ function MenuApp() {
   useEffect(() => {
     let unlistenShow;
     let unlistenKeepalive;
+    let unlistenAiMode;
 
     const bootstrap = async () => {
-      unlistenShow = await listen("menu:show", (event) => {
+      try {
+        const current = await invoke("get_ai_mode");
+        if (typeof current?.mode === "string") {
+          setAiMode(current.mode);
+          aiModeRef.current = current.mode;
+          let activeSid = null;
+          try {
+            activeSid = await invoke("get_active_session_id", { mode: current.mode });
+          } catch {
+            // no-op
+          }
+          const fallbackSid = readActiveSessionId(current.mode);
+          setSessionId(typeof activeSid === "number" ? activeSid : fallbackSid);
+        }
+      } catch {
+        // no-op
+      }
+
+      unlistenShow = await listen("menu:show", async (event) => {
         const sid = event.payload?.sessionId ?? event.payload?.session_id ?? null;
-        const next = typeof sid === "number" ? sid : null;
+        const next = typeof sid === "number" ? sid : readActiveSessionId(aiModeRef.current);
         setSessionId(next);
-        writeActiveSessionId(next);
+        if (typeof next === "number") {
+          writeActiveSessionId(aiModeRef.current, next);
+          try {
+            await invoke("set_active_session_id", {
+              mode: aiModeRef.current,
+              session_id: next
+            });
+          } catch {
+            // no-op
+          }
+        }
         setMode("menu");
         modeRef.current = "menu";
         setFading(false);
-        setMessages([]);
+        resetHistoryState();
         resetMenuCountdown();
       });
 
       unlistenKeepalive = await listen("menu:keepalive", () => {
         resetMenuCountdown();
+      });
+
+      unlistenAiMode = await listen("ai:mode-changed", async (event) => {
+        const nextMode = event.payload?.mode;
+        if (typeof nextMode === "string") {
+          setAiMode(nextMode);
+          aiModeRef.current = nextMode;
+          let activeSid = null;
+          try {
+            activeSid = await invoke("get_active_session_id", { mode: nextMode });
+          } catch {
+            // no-op
+          }
+          const fallbackSid = readActiveSessionId(nextMode);
+          setSessionId(typeof activeSid === "number" ? activeSid : fallbackSid);
+          resetHistoryState();
+        }
       });
     };
 
@@ -139,6 +256,9 @@ function MenuApp() {
       }
       if (unlistenKeepalive) {
         unlistenKeepalive();
+      }
+      if (unlistenAiMode) {
+        unlistenAiMode();
       }
     };
   }, []);
@@ -186,7 +306,11 @@ function MenuApp() {
               ×
             </button>
           </header>
-          <div className="history-mini-list">{historyContent}</div>
+          <div className="history-mini-list" ref={historyListRef} onScroll={onHistoryScroll}>
+            {historyContent}
+            {loadingMoreHistory ? <p className="history-empty">加载中...</p> : null}
+            {!hasMoreHistory && messages.length ? <p className="history-empty">没有更多了</p> : null}
+          </div>
         </section>
       )}
     </main>

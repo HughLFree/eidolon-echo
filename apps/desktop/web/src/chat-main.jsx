@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./chat.css";
 import { BACKEND_BASE_URL } from "./config";
 import { readActiveSessionId, writeActiveSessionId } from "./session";
@@ -12,9 +13,54 @@ function ChatApp() {
   const [sessionId, setSessionId] = useState(null);
   const [input, setInput] = useState("");
   const [inputDisabled, setInputDisabled] = useState(false);
+  const [aiMode, setAiMode] = useState("default");
 
   useEffect(() => {
-    setSessionId(readActiveSessionId());
+    let unlistenMode;
+
+    const bootstrap = async () => {
+      try {
+        const current = await invoke("get_ai_mode");
+        if (typeof current?.mode === "string") {
+          setAiMode(current.mode);
+          let activeSid = null;
+          try {
+            activeSid = await invoke("get_active_session_id", { mode: current.mode });
+          } catch {
+            // no-op
+          }
+          const fallbackSid = readActiveSessionId(current.mode);
+          const nextSid = typeof activeSid === "number" ? activeSid : fallbackSid;
+          setSessionId(nextSid);
+        }
+      } catch {
+        // no-op
+      }
+
+      unlistenMode = await listen("ai:mode-changed", async (event) => {
+        const nextMode = event.payload?.mode;
+        if (typeof nextMode === "string") {
+          setAiMode(nextMode);
+          let activeSid = null;
+          try {
+            activeSid = await invoke("get_active_session_id", { mode: nextMode });
+          } catch {
+            // no-op
+          }
+          const fallbackSid = readActiveSessionId(nextMode);
+          const nextSid = typeof activeSid === "number" ? activeSid : fallbackSid;
+          setSessionId(nextSid);
+        }
+      });
+    };
+
+    void bootstrap();
+
+    return () => {
+      if (unlistenMode) {
+        unlistenMode();
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -37,13 +83,33 @@ function ChatApp() {
   }
 
   async function sendMessage(message) {
-    const effectiveSessionId = readActiveSessionId() ?? sessionId;
+    let tauriSessionId = null;
+    try {
+      tauriSessionId = await invoke("get_active_session_id", { mode: aiMode });
+    } catch {
+      // no-op
+    }
+    const effectiveSessionId =
+      (typeof tauriSessionId === "number" ? tauriSessionId : null) ??
+      readActiveSessionId(aiMode) ??
+      sessionId;
     const data = await sendChatMessage(BACKEND_BASE_URL, {
       sessionId: effectiveSessionId,
-      message
+      message,
+      mode: aiMode
     });
+    const responseMode = typeof data.mode === "string" ? data.mode : aiMode;
+    writeActiveSessionId(responseMode, data.session_id);
+    try {
+      await invoke("set_active_session_id", {
+        mode: responseMode,
+        session_id: data.session_id
+      });
+    } catch {
+      // no-op
+    }
+    setAiMode(responseMode);
     setSessionId(data.session_id);
-    writeActiveSessionId(data.session_id);
     return data.reply;
   }
 
