@@ -48,7 +48,10 @@ pub(super) fn profile_memory_enabled(profile: Option<&crate::db::Profile>) -> bo
     profile.map(|value| value.memory_enabled).unwrap_or(false)
 }
 
-pub(super) fn profile_context_limit(profile: Option<&crate::db::Profile>, fallback: usize) -> usize {
+pub(super) fn profile_context_limit(
+    profile: Option<&crate::db::Profile>,
+    fallback: usize,
+) -> usize {
     let fallback = fallback.max(1).min(200);
     let Some(profile) = profile else {
         return fallback;

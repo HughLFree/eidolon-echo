@@ -1,5 +1,6 @@
 //! Desktop pet runtime composition: state setup, command registration and app bootstrapping.
 
+mod backend;
 mod commands;
 mod state;
 mod window_manager;
@@ -118,6 +119,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
                     }
                 }
                 "quit" => {
+                    backend::stop_backend_process(app);
                     app.exit(0);
                 }
                 _ => {}
@@ -133,13 +135,15 @@ pub fn run() {
         eprintln!("panic hook: {info}");
     }));
 
-    let builder = tauri::Builder::default();
-
-    builder
+    let app = tauri::Builder::default()
         .manage(Mutex::new(OverlayState::default()))
+        .manage(backend::BackendProcessState::default())
         .setup(|app| {
             setup_tray(app)?;
             let app_handle = app.handle().clone();
+            if let Err(error) = backend::ensure_backend_running(&app_handle) {
+                eprintln!("backend startup failed: {error}");
+            }
             if let Err(error) = crate::overlay::prepare_startup(&app_handle) {
                 eprintln!("overlay startup preparation failed: {error}");
             }
@@ -160,8 +164,15 @@ pub fn run() {
             commands::overlay::set_overlay_always_on_top,
             commands::avatar::hide_pet
         ])
-        .run(tauri::generate_context!())
+        .build(tauri::generate_context!())
         .unwrap_or_else(|error| {
             eprintln!("error while running tauri application: {error}");
+            std::process::exit(1);
         });
+
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            backend::stop_backend_process(app_handle);
+        }
+    });
 }

@@ -28,7 +28,7 @@
   - 历史接口：`GET /api/messages?mode=...&limit=...&before_id=...`。
   - 历史列表最新消息在上，支持滚动分页加载更早消息。
 - 上下文拼接：
-  - 系统提示词优先使用 `profiles.system_prompt`，为空时回退到文件 prompt。
+  - 系统提示词使用 `profiles.system_prompt`（数据库配置）。
   - 上下文历史优先从内存缓存读取，不足时再从数据库补齐。
   - 缓存键按 `conversation_id` 管理，避免多会话串上下文。
 - 设置中心：
@@ -46,7 +46,6 @@
   - `migrations/`：数据库 schema 与结构迁移
   - `openapi/`：OpenAPI 描述
   - `docs/`：面向开发者的接口文档
-  - `prompts/`：默认系统提示词与上下文提示词文件
   - `src/ai/`：AI 抽象层、OpenAI-Compatible 客户端、上下文缓存管理
   - `src/db/`：按资源拆分的数据访问层（conversations/messages/profiles/providers）
   - `src/handlers/`：HTTP handler 层（chat、profiles、providers、health）
@@ -72,7 +71,6 @@
 │   │   ├── config/default.toml
 │   │   ├── docs/http-api.md
 │   │   ├── migrations/0001_init.sql
-│   │   ├── migrations/0002_conversation_ids_to_integer.sql
 │   │   ├── openapi/openapi.yaml
 │   │   └── src
 │   │       ├── ai/
@@ -136,7 +134,7 @@
 1. 抽取窗口常量（统一放在 `desktop_pet/window_labels.rs` 或 `overlay/constants.rs`）。
 2. 给 `overlay/macos.rs` 拆分职责（初始化、空间行为、层级控制、child attachment）。
 3. 增加最小可回归检查脚本（启动后检查窗口存在性、配置加载、关键命令可调用）。
-4. 增加 `README` 的“故障排查”章节，明确日志关键词与定位方式。
+4. 持续完善 `README` 的“故障排查”章节，按新增问题补充日志关键词与定位方式。
 
 ## 运行说明
 
@@ -162,46 +160,7 @@ cargo install tauri-cli --version '^2'
 xcode-select --install
 ```
 
-### 2) 配置 API Key
-
-```bash
-# 直接编辑默认环境文件
-# apps/backend/.env.default
-```
-
-说明：
-
-- 默认配置在 `apps/backend/config/default.toml`
-- 默认环境变量文件：`apps/backend/.env.default`
-- 数据库迁移会在启动时自动执行（`sqlx` migrator）。
-- 默认 provider 是 `deepseek`
-- `api_key` 为空时会读取 `api_key_env` 指定环境变量
-- `ai.chat_history_limit` 控制每次发给模型的历史消息条数（默认 12）
-- `ai.context_cache_max_messages_per_mode` 控制每个会话缓存的消息上限（默认 100）
-- `ai.context_cache_max_modes` 控制内存中会话缓存总量上限（LRU 淘汰，默认 128）
-- `ai.providers.<provider>.temperature` 控制采样温度（默认 0.7）
-- `ai.providers.<provider>.max_tokens` 控制回复最大 token（可选，默认不限制）
-
-可选：配置系统指令和上下文 prompt（后端会自动注入到每次 `/api/chat` 请求）：
-
-```bash
-# 直接编辑默认文件
-# apps/backend/prompts/system_prompt.default.md
-# apps/backend/prompts/context_prompt.default.md
-```
-
-- 默认读取：`apps/backend/prompts/system_prompt.default.md` 和 `apps/backend/prompts/context_prompt.default.md`
-- 也可通过环境变量覆盖路径：`SYSTEM_PROMPT_FILE`、`CONTEXT_PROMPT_FILE`
-
-### 3) 启动后端
-
-```bash
-cargo run -p desktop-ai-backend
-```
-
-后端默认地址：`http://127.0.0.1:3001`
-
-### 4) 启动桌面端
+### 2) 启动桌面端（开发）
 
 ```bash
 cd apps/desktop/web
@@ -210,19 +169,42 @@ cd ../src-tauri
 cargo tauri dev
 ```
 
-前端默认请求：`http://127.0.0.1:3001`
+说明：
 
-如需修改前端请求地址：
+- `cargo tauri dev` 会自动拉起后端 sidecar（默认 `127.0.0.1:3001`）。
+- 托盘 `Quit` 或应用退出事件会尝试结束 sidecar 后端进程。
+- 开发模式下后端数据库路径为 `apps/backend/data/chat.db`。
+
+### 3) 配置 AI Provider（推荐在设置中心）
+
+请在设置中心的 API 页填写 provider 字段（会写入数据库）：
+
+- `base_url`
+- `model_name`
+- `api_key_ref`（这里直接填真实 API key 字符串）
+- `temperature`、`max_tokens`（可选）
+
+说明：
+
+- 系统会在后端启动时做一次 key 预检查，并在 `GET /api/health` 的 `ai_precheck` 返回结果。
+- 默认配置文件是 `apps/backend/config/default.toml`，主要用于初始值与无数据库配置时兜底。
+- 数据库迁移会在启动时自动执行（`sqlx` migrator）。
+- `max_tokens` 建议填正整数；留空表示不限制。
+
+### 4) 独立启动后端（可选）
+
+仅在你需要单独调试后端时使用：
 
 ```bash
-export VITE_BACKEND_BASE_URL=http://127.0.0.1:3001
+cargo run -p desktop-ai-backend
 ```
 
-或创建 `apps/desktop/web/.env.local`：
+常用环境变量覆盖（其余配置不再走 ENV fallback）：
 
-```bash
-VITE_BACKEND_BASE_URL=http://127.0.0.1:3001
-```
+- `APP_CONFIG`：指定配置文件路径
+- `DATABASE_PATH`：覆盖 SQLite 路径
+- `SERVER_HOST`：覆盖监听地址
+- `SERVER_PORT`：覆盖监听端口
 
 ## API 文档
 
@@ -250,3 +232,12 @@ VITE_BACKEND_BASE_URL=http://127.0.0.1:3001
 - `allow_methods(Any)`
 
 适合本地开发和跨端调试。生产环境建议改成白名单来源与受限方法/请求头。
+
+## 常见问题
+
+- `401 Unauthorized` / `invalid api key`
+  - 到设置中心检查当前 mode 绑定的 provider，确认 `api_key_ref`、`base_url`、`model_name` 匹配且 key 有权限。
+  - 可先访问 `http://127.0.0.1:3001/api/health`，检查 `ai_precheck.ready` 是否为 `true`。
+- `migration ... was previously applied but has been modified` / `... missing in the resolved migrations`
+  - 说明本地旧库与当前迁移基线不一致。
+  - 开发阶段可删除本地数据库后重启（默认是 `apps/backend/data/chat.db`），让 `0001_init.sql` 重新建库。

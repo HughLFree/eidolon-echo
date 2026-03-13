@@ -3,9 +3,36 @@
 async function parseJsonOrThrow(response) {
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `HTTP ${response.status}`);
+    const message = normalizeErrorText(text);
+    throw new Error(message || `HTTP ${response.status}`);
   }
   return await response.json();
+}
+
+function normalizeErrorText(rawText) {
+  const text = String(rawText || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+    if (parsed && typeof parsed === "object") {
+      if (typeof parsed.message === "string" && parsed.message.trim()) {
+        return parsed.message.trim();
+      }
+      if (parsed.error && typeof parsed.error.message === "string" && parsed.error.message.trim()) {
+        return parsed.error.message.trim();
+      }
+    }
+  } catch {
+    // ignore parse errors and keep original text
+  }
+
+  return text;
 }
 
 export async function sendChatMessage(baseUrl, { message, mode }) {
@@ -95,5 +122,10 @@ export async function fetchConversationMessages(baseUrl, { limit = 50, mode = "d
     params.set("before_id", String(beforeId));
   }
   const response = await fetch(`${baseUrl}/api/messages?${params.toString()}`);
+  return await parseJsonOrThrow(response);
+}
+
+export async function fetchBackendHealth(baseUrl) {
+  const response = await fetch(`${baseUrl}/api/health`);
   return await parseJsonOrThrow(response);
 }

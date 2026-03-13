@@ -37,8 +37,7 @@ pub fn toggle_avatar_menu(
     menu.show().map_err(|e| e.to_string())?;
     menu.set_ignore_cursor_events(false)
         .map_err(|e| e.to_string())?;
-    menu.emit("menu:show", ())
-        .map_err(|e| e.to_string())?;
+    menu.emit("menu:show", ()).map_err(|e| e.to_string())?;
 
     Ok(())
 }

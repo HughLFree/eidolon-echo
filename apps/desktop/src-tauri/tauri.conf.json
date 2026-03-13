@@ -5,7 +5,7 @@
   "identifier": "com.example.ai-desktop-pet",
   "build": {
     "beforeDevCommand": "cd /Users/hugh/mycode/desktop-ai/apps/desktop/web && npm run dev",
-    "beforeBuildCommand": "cd /Users/hugh/mycode/desktop-ai/apps/desktop/web && npm run build",
+    "beforeBuildCommand": "bash ./scripts/prepare-release-sidecar.sh",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../web/dist"
   },
@@ -63,6 +63,10 @@
     ]
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "resources": {
+      "../../backend/config/default.toml": "config/default.toml"
+    },
+    "externalBin": ["binaries/desktop-ai-backend"]
   }
 }

@@ -39,8 +39,6 @@ pub struct ProviderConfig {
     pub base_url: String,
     #[serde(default)]
     pub api_key: String,
-    #[serde(default)]
-    pub api_key_env: Option<String>,
     pub model: String,
     #[serde(default = "default_temperature")]
     pub temperature: f32,
@@ -50,8 +48,6 @@ pub struct ProviderConfig {
 
 impl AppConfig {
     pub fn load() -> Result<Self> {
-        load_env_files();
-
         let explicit = env::var("APP_CONFIG").ok();
         let manifest_default = format!("{}/config/default.toml", env!("CARGO_MANIFEST_DIR"));
         let candidates = [
@@ -69,10 +65,15 @@ impl AppConfig {
             }
         }
 
-        let path = config_path.context("failed to locate config file")?;
-        let raw = fs::read_to_string(&path)
-            .with_context(|| format!("failed to read config file: {path}"))?;
-        let cfg: AppConfig = toml::from_str(&raw).context("invalid TOML config")?;
+        let mut cfg = if let Some(path) = config_path {
+            let raw = fs::read_to_string(&path)
+                .with_context(|| format!("failed to read config file: {path}"))?;
+            toml::from_str(&raw).context("invalid TOML config")?
+        } else {
+            default_config()
+        };
+
+        apply_env_overrides(&mut cfg)?;
 
         if !cfg.ai.providers.contains_key(&cfg.ai.default_provider) {
             bail!(
@@ -102,6 +103,74 @@ impl AppConfig {
     }
 }
 
+fn apply_env_overrides(cfg: &mut AppConfig) -> Result<()> {
+    if let Ok(path) = env::var("DATABASE_PATH") {
+        let path = path.trim();
+        if !path.is_empty() {
+            cfg.database.path = path.to_string();
+        }
+    }
+
+    if let Ok(host) = env::var("SERVER_HOST") {
+        let host = host.trim();
+        if !host.is_empty() {
+            cfg.server.host = host.to_string();
+        }
+    }
+
+    if let Ok(port) = env::var("SERVER_PORT") {
+        let port = port.trim();
+        if !port.is_empty() {
+            cfg.server.port = port
+                .parse::<u16>()
+                .with_context(|| format!("invalid SERVER_PORT value: {port}"))?;
+        }
+    }
+
+    Ok(())
+}
+
+fn default_config() -> AppConfig {
+    let mut providers = HashMap::new();
+    providers.insert(
+        "deepseek".to_string(),
+        ProviderConfig {
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            api_key: String::new(),
+            model: "deepseek-chat".to_string(),
+            temperature: 0.9,
+            max_tokens: Some(512),
+        },
+    );
+    providers.insert(
+        "openai".to_string(),
+        ProviderConfig {
+            base_url: "https://api.openai.com/v1".to_string(),
+            api_key: String::new(),
+            model: "gpt-4o-mini".to_string(),
+            temperature: 0.7,
+            max_tokens: None,
+        },
+    );
+
+    AppConfig {
+        server: ServerConfig {
+            host: "127.0.0.1".to_string(),
+            port: 3001,
+        },
+        database: DatabaseConfig {
+            path: "apps/backend/data/chat.db".to_string(),
+        },
+        ai: AiConfig {
+            default_provider: "deepseek".to_string(),
+            chat_history_limit: 12,
+            context_cache_max_messages_per_mode: 100,
+            context_cache_max_modes: 128,
+            providers,
+        },
+    }
+}
+
 fn default_chat_history_limit() -> i64 {
     12
 }
@@ -118,26 +187,6 @@ fn default_temperature() -> f32 {
     0.7
 }
 
-fn load_env_files() {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let env_default_path = format!("{manifest_dir}/.env.default");
-    let env_path = format!("{manifest_dir}/.env");
-    let candidates = [
-        ".env.default",
-        ".env",
-        "apps/backend/.env.default",
-        "apps/backend/.env",
-        env_default_path.as_str(),
-        env_path.as_str(),
-    ];
-
-    for path in candidates {
-        if Path::new(path).exists() {
-            let _ = dotenvy::from_path(path);
-        }
-    }
-}
-
 impl ProviderConfig {
     pub fn resolved_api_key(&self, provider_name: &str) -> Result<String> {
         let direct = self.api_key.trim();
@@ -145,28 +194,8 @@ impl ProviderConfig {
             return Ok(direct.to_string());
         }
 
-        if let Some(env_name) = self.api_key_env.as_deref() {
-            let env_name = env_name.trim();
-            if !env_name.is_empty() {
-                return env::var(env_name).with_context(|| {
-                    format!("missing env var '{env_name}' for provider '{provider_name}'")
-                });
-            }
-        }
-
-        let fallback = format!(
-            "{}_API_KEY",
-            provider_name
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                .collect::<String>()
-                .to_uppercase()
-        );
-
-        env::var(&fallback).with_context(|| {
-            format!(
-                "missing API key for provider '{provider_name}'; set 'api_key', 'api_key_env', or env '{fallback}'"
-            )
-        })
+        bail!(
+            "missing API key for provider '{provider_name}'; set 'api_key' in config or provider api_key_ref in database settings"
+        )
     }
 }

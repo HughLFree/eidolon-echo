@@ -34,7 +34,8 @@ pub(super) async fn resolve_mode_openai_compat_client(
     }
 
     let provider_type = provider.provider_type.trim().to_lowercase();
-    if provider_type != "openai_compat" && provider_type != "deepseek" && provider_type != "openai" {
+    if provider_type != "openai_compat" && provider_type != "deepseek" && provider_type != "openai"
+    {
         return Ok(None);
     }
 
@@ -60,19 +61,12 @@ pub(super) async fn resolve_mode_openai_compat_client(
 }
 
 fn resolve_provider_api_key(raw: Option<&str>) -> anyhow::Result<String> {
-    let key_or_ref = raw
+    let api_key = raw
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| anyhow::anyhow!("provider api_key_ref is empty"))?;
 
-    if let Ok(env_key) = std::env::var(key_or_ref) {
-        let env_key = env_key.trim();
-        if !env_key.is_empty() {
-            return Ok(env_key.to_string());
-        }
-    }
-
-    Ok(key_or_ref.to_string())
+    Ok(api_key.to_string())
 }
 
 fn normalize_provider_max_tokens(raw: Option<i64>) -> Option<u32> {

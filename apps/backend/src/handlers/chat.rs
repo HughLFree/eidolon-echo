@@ -55,12 +55,14 @@ pub async fn chat(
     }
 
     let mode = payload.mode.unwrap_or_default();
-    let (mode_profile, conversation_id) = db::resolve_mode_profile_and_conversation(&state.pool, mode)
-        .await
-        .map_err(internal_error)?;
+    let (mode_profile, conversation_id) =
+        db::resolve_mode_profile_and_conversation(&state.pool, mode)
+            .await
+            .map_err(internal_error)?;
 
     let memory_enabled = profile_memory_enabled(Some(&mode_profile));
-    let context_limit = profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
+    let context_limit =
+        profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
 
     if memory_enabled {
         ensure_memory_cache_for_context(&state, conversation_id, context_limit).await?;
@@ -74,9 +76,7 @@ pub async fn chat(
             Some(prompt.to_string())
         }
     };
-    let system_prompt = profile_prompt
-        .as_deref()
-        .or(state.prompts.system_prompt.as_deref());
+    let system_prompt = profile_prompt.as_deref();
 
     let ai_messages: Vec<ChatMessage> = {
         let mut manager = state
@@ -87,7 +87,7 @@ pub async fn chat(
             conversation_id,
             user_message,
             system_prompt,
-            state.prompts.context_prompt.as_deref(),
+            None,
             context_limit,
         )
     };
@@ -100,7 +100,7 @@ pub async fn chat(
     let reply = runtime_ai_client
         .chat(&ai_messages)
         .await
-        .map_err(internal_error)?;
+        .map_err(map_chat_upstream_error)?;
 
     if memory_enabled {
         db::append_message_pair(&state.pool, conversation_id, user_message, &reply)
@@ -133,12 +133,14 @@ pub async fn chat_stream(
     }
 
     let mode = payload.mode.unwrap_or_default();
-    let (mode_profile, conversation_id) = db::resolve_mode_profile_and_conversation(&state.pool, mode)
-        .await
-        .map_err(internal_error)?;
+    let (mode_profile, conversation_id) =
+        db::resolve_mode_profile_and_conversation(&state.pool, mode)
+            .await
+            .map_err(internal_error)?;
 
     let memory_enabled = profile_memory_enabled(Some(&mode_profile));
-    let context_limit = profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
+    let context_limit =
+        profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
 
     if memory_enabled {
         ensure_memory_cache_for_context(&state, conversation_id, context_limit).await?;
@@ -152,9 +154,7 @@ pub async fn chat_stream(
             Some(prompt.to_string())
         }
     };
-    let system_prompt = profile_prompt
-        .as_deref()
-        .or(state.prompts.system_prompt.as_deref());
+    let system_prompt = profile_prompt.as_deref();
 
     let ai_messages: Vec<ChatMessage> = {
         let mut manager = state
@@ -165,7 +165,7 @@ pub async fn chat_stream(
             conversation_id,
             user_message,
             system_prompt,
-            state.prompts.context_prompt.as_deref(),
+            None,
             context_limit,
         )
     };
@@ -174,7 +174,8 @@ pub async fn chat_stream(
         super::runtime_ai::resolve_mode_openai_compat_client(&state, Some(&mode_profile))
             .await
             .map_err(internal_error)?;
-    let stream_client = runtime_client.unwrap_or_else(|| state.default_openai_client.as_ref().clone());
+    let stream_client =
+        runtime_client.unwrap_or_else(|| state.default_openai_client.as_ref().clone());
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<Bytes, Infallible>>();
     let state_for_task = state.clone();
@@ -211,7 +212,7 @@ pub async fn chat_stream(
             }
             Err(error) => {
                 tracing::error!("stream chat failed: {error}");
-                let error_text = format!("\n请求失败：{error}");
+                let error_text = map_upstream_error_for_client(&error.to_string());
                 let _ = tx.send(Ok(Bytes::copy_from_slice(error_text.as_bytes())));
             }
         }
@@ -219,9 +220,10 @@ pub async fn chat_stream(
 
     let body = Body::from_stream(UnboundedReceiverStream::new(rx));
     let mut response = body.into_response();
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, HeaderValue::from_static("text/plain; charset=utf-8"));
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
     response
         .headers_mut()
         .insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
@@ -236,12 +238,14 @@ pub async fn list_messages(
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let before_id = query.before_id;
     let mode = query.mode.unwrap_or_default();
-    let (mode_profile, conversation_id) = db::resolve_mode_profile_and_conversation(&state.pool, mode)
-        .await
-        .map_err(internal_error)?;
+    let (mode_profile, conversation_id) =
+        db::resolve_mode_profile_and_conversation(&state.pool, mode)
+            .await
+            .map_err(internal_error)?;
     let memory_enabled = profile_memory_enabled(Some(&mode_profile));
 
-    let context_limit = profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
+    let context_limit =
+        profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
 
     let messages = if memory_enabled {
         ensure_memory_cache_for_history(
@@ -308,15 +312,16 @@ async fn ensure_memory_cache_for_context(
             .min(200) as i64;
         let older =
             db::list_messages_before_id(&state.pool, conversation_id, oldest_id, pull_limit)
-            .await
-            .map_err(internal_error)?;
+                .await
+                .map_err(internal_error)?;
         let exhausted = older.len() < pull_limit as usize;
         let is_empty = older.is_empty();
         let mut manager = state
             .context_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let progressed = manager.prepend_conversation_older_from_db(conversation_id, older, exhausted);
+        let progressed =
+            manager.prepend_conversation_older_from_db(conversation_id, older, exhausted);
         if is_empty || !progressed {
             return Ok(());
         }
@@ -340,7 +345,8 @@ async fn ensure_memory_cache_for_history(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             let meta = manager.conversation_cache_meta(conversation_id);
-            let cached = manager.list_cached_messages_desc(conversation_id, effective_limit, before_id);
+            let cached =
+                manager.list_cached_messages_desc(conversation_id, effective_limit, before_id);
             (meta, cached)
         };
 
@@ -370,17 +376,50 @@ async fn ensure_memory_cache_for_history(
             .min(200);
         let older =
             db::list_messages_before_id(&state.pool, conversation_id, oldest_id, pull_limit)
-            .await
-            .map_err(internal_error)?;
+                .await
+                .map_err(internal_error)?;
         let exhausted = older.len() < pull_limit as usize;
         let is_empty = older.is_empty();
         let mut manager = state
             .context_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let progressed = manager.prepend_conversation_older_from_db(conversation_id, older, exhausted);
+        let progressed =
+            manager.prepend_conversation_older_from_db(conversation_id, older, exhausted);
         if is_empty || !progressed {
             return Ok(cached);
         }
     }
+}
+
+fn map_chat_upstream_error<E: std::fmt::Display>(error: E) -> (StatusCode, String) {
+    let raw = error.to_string();
+    tracing::error!("chat upstream failed: {raw}");
+    (StatusCode::BAD_GATEWAY, map_upstream_error_for_client(&raw))
+}
+
+fn map_upstream_error_for_client(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    let is_auth_error = lower.contains("401")
+        || lower.contains("403")
+        || lower.contains("unauthorized")
+        || lower.contains("authentication")
+        || lower.contains("invalid api key")
+        || lower.contains("api_key_ref is empty")
+        || lower.contains("missing env var")
+        || lower.contains("authentication fails");
+    if is_auth_error {
+        return "请求失败：模型鉴权失败，请在“设置 -> API 设置”检查 API key / api_key_ref / base_url。"
+            .to_string();
+    }
+
+    let is_connect_error = lower.contains("timed out")
+        || lower.contains("dns")
+        || lower.contains("connection")
+        || lower.contains("connect");
+    if is_connect_error {
+        return "请求失败：无法连接模型服务，请稍后重试。".to_string();
+    }
+
+    "请求失败：模型服务调用失败，请检查设置后重试。".to_string()
 }

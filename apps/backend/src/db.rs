@@ -12,12 +12,12 @@ mod pool;
 mod profiles;
 mod providers;
 
-pub use conversations::{bootstrap_mode_profiles_and_conversations, resolve_mode_profile_and_conversation};
+pub use conversations::{
+    bootstrap_mode_profiles_and_conversations, resolve_mode_profile_and_conversation,
+};
 pub use messages::{append_message_pair, list_messages, list_messages_before_id};
 pub use pool::init_pool;
-pub use profiles::{
-    create_profile, delete_profile, get_profile, list_profiles, update_profile,
-};
+pub use profiles::{create_profile, delete_profile, get_profile, list_profiles, update_profile};
 pub use providers::{
     ai_provider_exists, create_ai_provider, delete_ai_provider, get_ai_provider,
     get_default_ai_provider, list_ai_providers, update_ai_provider,

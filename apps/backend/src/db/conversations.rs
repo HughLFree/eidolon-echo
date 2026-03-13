@@ -3,9 +3,13 @@ use anyhow::{anyhow, Result};
 use chrono::Utc;
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
-pub async fn bootstrap_mode_profiles_and_conversations(pool: &SqlitePool) -> Result<()> {
+pub async fn bootstrap_mode_profiles_and_conversations(
+    pool: &SqlitePool,
+    default_system_prompt: Option<&str>,
+) -> Result<()> {
     for mode in [AiRoleMode::Default, AiRoleMode::Roleplay] {
-        let profile_id = super::profiles::ensure_mode_profile(pool, mode).await?;
+        let profile_id =
+            super::profiles::ensure_mode_profile(pool, mode, default_system_prompt).await?;
         let profile = super::profiles::get_profile(pool, &profile_id)
             .await?
             .ok_or_else(|| anyhow!("profile '{profile_id}' not found after ensure"))?;
@@ -26,7 +30,12 @@ pub async fn resolve_mode_profile_and_conversation(
 
     resolve_mode_profile_and_conversation_fast(pool, mode)
         .await?
-        .ok_or_else(|| anyhow!("failed to resolve active conversation for mode {}", mode_to_str(mode)))
+        .ok_or_else(|| {
+            anyhow!(
+                "failed to resolve active conversation for mode {}",
+                mode_to_str(mode)
+            )
+        })
 }
 
 pub(crate) async fn ensure_profile_active_conversation(
@@ -42,11 +51,12 @@ pub(crate) async fn ensure_profile_active_conversation(
         return Ok(active);
     }
 
-    let conversation_id = if let Some(existing) = latest_conversation_id_for_profile_tx(&mut tx, profile_id).await? {
-        existing
-    } else {
-        create_conversation_for_profile_tx(&mut tx, profile_id, mode, profile_name).await?
-    };
+    let conversation_id =
+        if let Some(existing) = latest_conversation_id_for_profile_tx(&mut tx, profile_id).await? {
+            existing
+        } else {
+            create_conversation_for_profile_tx(&mut tx, profile_id, mode, profile_name).await?
+        };
 
     sqlx::query(
         r#"
@@ -97,8 +107,11 @@ async fn resolve_mode_profile_and_conversation_fast(
     Ok(Some((profile, conversation_id)))
 }
 
-async fn repair_mode_profile_and_active_conversation(pool: &SqlitePool, mode: AiRoleMode) -> Result<()> {
-    let profile_id = super::profiles::ensure_mode_profile(pool, mode).await?;
+async fn repair_mode_profile_and_active_conversation(
+    pool: &SqlitePool,
+    mode: AiRoleMode,
+) -> Result<()> {
+    let profile_id = super::profiles::ensure_mode_profile(pool, mode, None).await?;
     let profile = super::profiles::get_profile(pool, &profile_id)
         .await?
         .ok_or_else(|| anyhow!("profile '{profile_id}' not found after ensure"))?;

@@ -86,7 +86,7 @@ Create request example:
   "provider_type": "openai_compat",
   "base_url": "https://api.openai.com/v1",
   "model_name": "gpt-4o-mini",
-  "api_key_ref": "OPENAI_API_KEY",
+  "api_key_ref": "sk-your-real-key",
   "enabled": true,
   "is_default": true,
   "temperature": 0.7,

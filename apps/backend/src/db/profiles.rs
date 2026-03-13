@@ -38,7 +38,10 @@ pub async fn list_profiles(pool: &SqlitePool, mode: Option<AiRoleMode>) -> Resul
     Ok(profiles)
 }
 
-pub async fn latest_profile_by_mode(pool: &SqlitePool, mode: AiRoleMode) -> Result<Option<Profile>> {
+pub async fn latest_profile_by_mode(
+    pool: &SqlitePool,
+    mode: AiRoleMode,
+) -> Result<Option<Profile>> {
     let row = sqlx::query(
         r#"
         SELECT id, mode, name, avatar_path, system_prompt, opening_message, context_limit, memory_enabled, provider_id, extra_json, created_at, updated_at
@@ -70,7 +73,11 @@ pub async fn get_profile(pool: &SqlitePool, id: &str) -> Result<Option<Profile>>
     row.map(row_to_profile).transpose()
 }
 
-pub async fn create_profile(pool: &SqlitePool, id: &str, payload: &ProfileUpsert) -> Result<Profile> {
+pub async fn create_profile(
+    pool: &SqlitePool,
+    id: &str,
+    payload: &ProfileUpsert,
+) -> Result<Profile> {
     let now = Utc::now().timestamp();
 
     sqlx::query(
@@ -155,7 +162,13 @@ pub async fn delete_profile(pool: &SqlitePool, id: &str) -> Result<bool> {
     Ok(result.rows_affected() > 0)
 }
 
-pub(crate) async fn ensure_mode_profile(pool: &SqlitePool, mode: AiRoleMode) -> Result<String> {
+const DEFAULT_MODE_SYSTEM_PROMPT: &str = "你是一个桌宠 AI 助手。\n\n要求：\n- 回答简洁、明确、可执行。\n- 优先使用中文回复。\n- 不要编造事实；不确定时明确说明不确定。";
+
+pub(crate) async fn ensure_mode_profile(
+    pool: &SqlitePool,
+    mode: AiRoleMode,
+    default_system_prompt: Option<&str>,
+) -> Result<String> {
     if let Some(profile) = latest_profile_by_mode(pool, mode).await? {
         return Ok(profile.id);
     }
@@ -164,7 +177,10 @@ pub(crate) async fn ensure_mode_profile(pool: &SqlitePool, mode: AiRoleMode) -> 
         AiRoleMode::Default => (
             AUTO_DEFAULT_PROFILE_ID,
             "Default Profile",
-            "You are a concise desktop assistant.",
+            default_system_prompt
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(DEFAULT_MODE_SYSTEM_PROMPT),
             0_i64,
         ),
         AiRoleMode::Roleplay => (
@@ -193,8 +209,8 @@ pub(crate) async fn ensure_mode_profile(pool: &SqlitePool, mode: AiRoleMode) -> 
     .execute(pool)
     .await?;
 
-    let profile = latest_profile_by_mode(pool, mode)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("failed to ensure profile for mode {}", mode_to_str(mode)))?;
+    let profile = latest_profile_by_mode(pool, mode).await?.ok_or_else(|| {
+        anyhow::anyhow!("failed to ensure profile for mode {}", mode_to_str(mode))
+    })?;
     Ok(profile.id)
 }

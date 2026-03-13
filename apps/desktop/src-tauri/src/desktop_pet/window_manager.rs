@@ -315,7 +315,6 @@ pub fn bootstrap_desktop_pet(app: &AppHandle) {
             }
         });
     }
-
 }
 
 pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {

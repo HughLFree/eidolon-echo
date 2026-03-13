@@ -6,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./chat.css";
 import { BACKEND_BASE_URL } from "./config";
-import { sendChatMessageStream } from "./api/chat";
+import { fetchBackendHealth, sendChatMessageStream } from "./api/chat";
 
 function ChatApp() {
   const [input, setInput] = useState("");
@@ -22,6 +22,17 @@ function ChatApp() {
         const current = await invoke("get_ai_mode");
         if (typeof current?.mode === "string") {
           setAiMode(current.mode);
+        }
+      } catch {
+        // no-op
+      }
+
+      try {
+        const health = await fetchBackendHealth(BACKEND_BASE_URL);
+        if (health?.ai_precheck?.ready === false) {
+          const reason = (health.ai_precheck.message || "").trim();
+          const precheckTip = reason || "模型连通性预检查未通过，请先在设置里确认 API 配置。";
+          await pushBubble(precheckTip);
         }
       } catch {
         // no-op
@@ -65,6 +76,12 @@ function ChatApp() {
     });
     const responseMode = typeof data.mode === "string" ? data.mode : aiMode;
     setAiMode(responseMode);
+
+    const backendFailure = extractBackendFailureMessage(data.reply);
+    if (backendFailure) {
+      throw new Error(backendFailure);
+    }
+
     return data.reply;
   }
 
@@ -79,7 +96,7 @@ function ChatApp() {
     try {
       await sendMessageStream(text);
     } catch (error) {
-      await pushBubble(`请求失败：${error.message}`);
+      await pushBubble(toUserFriendlyErrorMessage(error));
     } finally {
       setInputDisabled(false);
     }
@@ -105,3 +122,53 @@ function ChatApp() {
 }
 
 createRoot(document.getElementById("chat-root")).render(<ChatApp />);
+
+function toUserFriendlyErrorMessage(error) {
+  const raw = String(error?.message || error || "").trim();
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes("401")
+    || lower.includes("403")
+    || lower.includes("unauthorized")
+    || lower.includes("authentication")
+    || lower.includes("invalid api key")
+    || lower.includes("api key")
+    || lower.includes("missing env var")
+    || lower.includes("api_key_ref is empty")
+    || lower.includes("authentication fails")
+    || lower.includes("invalid_request_error")
+  ) {
+    return "模型鉴权失败。请在“设置 -> API 设置”检查 API key / api_key_ref / base_url。";
+  }
+
+  if (
+    lower.includes("failed to fetch")
+    || lower.includes("networkerror")
+    || lower.includes("connection refused")
+    || lower.includes("connect")
+    || lower.includes("timed out")
+  ) {
+    return "无法连接到后端服务，请确认桌宠已正常启动。";
+  }
+
+  return raw ? `请求失败：${raw}` : "请求失败，请稍后重试。";
+}
+
+function extractBackendFailureMessage(reply) {
+  if (typeof reply !== "string") {
+    return "";
+  }
+  const text = reply.trim();
+  if (!text) {
+    return "";
+  }
+
+  const marker = "请求失败：";
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex >= 0) {
+    return text.slice(markerIndex + marker.length).trim() || text;
+  }
+
+  return "";
+}
