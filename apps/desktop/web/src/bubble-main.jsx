@@ -2,11 +2,13 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { invoke } from "@tauri-apps/api/core";
 import "./bubble.css";
 
 function BubbleApp() {
   const [text, setText] = useState("");
   const timerRef = useRef(null);
+  const bubbleRef = useRef(null);
 
   useEffect(() => {
     window.__desktopAiSetBubble = (value) => {
@@ -33,9 +35,26 @@ function BubbleApp() {
     };
   }, []);
 
+  useEffect(() => {
+    if (text && bubbleRef.current) {
+      bubbleRef.current.scrollTop = 0;
+    }
+  }, [text]);
+
+  useEffect(() => {
+    invoke("set_bubble_interactive", { interactive: Boolean(text) }).catch((error) => {
+      console.error("set_bubble_interactive failed:", error);
+    });
+  }, [text]);
+
   return (
     <main className="bubble-root">
-      <section id="bubble" className={`bubble ${text ? "show" : ""}`} aria-live="polite">
+      <section
+        id="bubble"
+        ref={bubbleRef}
+        className={`bubble ${text ? "show" : ""}`}
+        aria-live="polite"
+      >
         {text}
       </section>
     </main>

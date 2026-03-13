@@ -151,6 +151,7 @@ pub fn run() {
             commands::ai::get_ai_mode,
             commands::avatar::start_window_drag,
             commands::chat::set_bubble_text,
+            commands::chat::set_bubble_interactive,
             commands::menu::toggle_avatar_menu,
             commands::menu::menu_keep_alive,
             commands::menu::open_history_panel,
