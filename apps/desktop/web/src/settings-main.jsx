@@ -1,7 +1,8 @@
 /** Settings panel entry: provider + profile configuration persisted to backend database. */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { getName, getVersion } from "@tauri-apps/api/app";
 import { BACKEND_BASE_URL } from "./config";
 import {
   createAiProvider,
@@ -17,8 +18,33 @@ const DEEPSEEK_PROVIDER_ID = "deepseek-main";
 const DEFAULT_PROFILE_ID = "profile-default";
 const ROLEPLAY_PROFILE_ID = "profile-roleplay";
 
-const TAB_API = "api";
-const TAB_ROLEPLAY = "roleplay";
+const PAGE_OVERVIEW = "overview";
+const PAGE_API = "api";
+const PAGE_DEFAULT = "default";
+const PAGE_ROLEPLAY = "roleplay";
+
+const settingsPages = [
+  {
+    id: PAGE_OVERVIEW,
+    title: "概览",
+    description: "版本与结构说明"
+  },
+  {
+    id: PAGE_API,
+    title: "API 设置",
+    description: "模型连接参数"
+  },
+  {
+    id: PAGE_DEFAULT,
+    title: "默认模式",
+    description: "常规对话配置"
+  },
+  {
+    id: PAGE_ROLEPLAY,
+    title: "角色扮演",
+    description: "角色设定与开场白"
+  }
+];
 
 const defaultProviderForm = {
   apiKey: "",
@@ -76,7 +102,9 @@ function trimOrNull(raw) {
 }
 
 function SettingsApp() {
-  const [activeTab, setActiveTab] = useState(TAB_API);
+  const [activePage, setActivePage] = useState(PAGE_OVERVIEW);
+  const [appName, setAppName] = useState("桌宠配置中心");
+  const [appVersion, setAppVersion] = useState("0.1.0");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [statusText, setStatusText] = useState("");
@@ -93,6 +121,32 @@ function SettingsApp() {
   const [roleplayProfileId, setRoleplayProfileId] = useState(ROLEPLAY_PROFILE_ID);
   const [roleplayProfileExists, setRoleplayProfileExists] = useState(false);
   const [roleplayForm, setRoleplayForm] = useState(roleplayModeForm);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadAppMeta() {
+      try {
+        const [name, version] = await Promise.all([getName(), getVersion()]);
+        if (!mounted) {
+          return;
+        }
+        setAppName(name || "桌宠配置中心");
+        setAppVersion(version || "0.1.0");
+      } catch (_error) {
+        if (mounted) {
+          setAppName("桌宠配置中心");
+          setAppVersion("0.1.0");
+        }
+      }
+    }
+
+    void loadAppMeta();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -262,7 +316,7 @@ function SettingsApp() {
     }
   }
 
-  const statusClassName = useMemo(() => {
+  const statusClassName = (() => {
     if (!statusText) {
       return "settings-status hidden";
     }
@@ -273,204 +327,302 @@ function SettingsApp() {
       return "settings-status error";
     }
     return "settings-status";
-  }, [statusKind, statusText]);
+  })();
+
+  function renderEditorToolbar() {
+    return (
+      <section className="page-toolbar">
+        <p className={statusClassName}>{statusText || "状态就绪"}</p>
+        <button className="save-btn" type="button" onClick={onSave} disabled={loading || saving}>
+          {saving ? "保存中..." : "保存设置"}
+        </button>
+      </section>
+    );
+  }
+
+  function renderOverview() {
+    return (
+      <>
+        <section className="hero-card">
+          <div className="hero-copy">
+            <p className="hero-eyebrow">Overview</p>
+            <h2>{appName}</h2>
+            <p className="hero-text">
+              这是一个以 AI 对话为核心的桌面助手，采用前后端分离结构。设置中心现在按用途拆成四个页面，减少不同配置之间的混用。
+            </p>
+          </div>
+          <div className="hero-meta">
+            <div className="meta-chip">
+              <span>当前版本</span>
+              <strong>v{appVersion}</strong>
+            </div>
+            <div className="meta-chip">
+              <span>前端</span>
+              <strong>React + Vite</strong>
+            </div>
+            <div className="meta-chip">
+              <span>桌面壳</span>
+              <strong>Tauri + Rust</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>你可以在这里配置什么</h2>
+          <div className="overview-grid">
+            <article className="info-tile">
+              <h3>API 设置</h3>
+              <p>配置模型服务地址、API Key、模型名、温度和最大输出长度。</p>
+            </article>
+            <article className="info-tile">
+              <h3>默认模式</h3>
+              <p>配置普通桌宠对话的人设、头像和上下文保留数量。</p>
+            </article>
+            <article className="info-tile">
+              <h3>角色扮演</h3>
+              <p>配置角色模式的系统提示词、开场白和独立头像。</p>
+            </article>
+            <article className="info-tile">
+              <h3>保存方式</h3>
+              <p>所有设置会统一写入数据库，后续请求按数据库中的 provider 和 profile 生效。</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="card">
+          <h2>模式说明</h2>
+          <div className="summary-list">
+            <p>
+              <strong>默认模式</strong>
+              适合日常简洁对话，使用默认助手设定。
+            </p>
+            <p>
+              <strong>角色扮演模式</strong>
+              适合带角色语气的连续交流，可额外定义开场白。
+            </p>
+            <p>
+              <strong>设置建议</strong>
+              先完成 API 设置，再分别调整默认模式和角色扮演模式。
+            </p>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function renderApiSettings() {
+    return (
+      <>
+        {renderEditorToolbar()}
+        <section className="card">
+          <h2>DeepSeek API</h2>
+          <div className="field-grid">
+            <label>
+              <span>API Key</span>
+              <input
+                value={providerForm.apiKey}
+                onChange={(event) =>
+                  setProviderForm((prev) => ({ ...prev, apiKey: event.target.value }))
+                }
+                placeholder="sk-..."
+              />
+            </label>
+            <label>
+              <span>Base URL</span>
+              <input
+                value={providerForm.baseUrl}
+                onChange={(event) =>
+                  setProviderForm((prev) => ({ ...prev, baseUrl: event.target.value }))
+                }
+                placeholder="https://api.deepseek.com/v1"
+              />
+            </label>
+            <label>
+              <span>Model</span>
+              <input
+                value={providerForm.modelName}
+                onChange={(event) =>
+                  setProviderForm((prev) => ({ ...prev, modelName: event.target.value }))
+                }
+                placeholder="deepseek-chat"
+              />
+            </label>
+            <label>
+              <span>Temperature</span>
+              <input
+                value={providerForm.temperature}
+                onChange={(event) =>
+                  setProviderForm((prev) => ({ ...prev, temperature: event.target.value }))
+                }
+                placeholder="0.7"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+              />
+            </label>
+            <label>
+              <span>Max Tokens（可选）</span>
+              <input
+                value={providerForm.maxTokens}
+                onChange={(event) =>
+                  setProviderForm((prev) => ({ ...prev, maxTokens: event.target.value }))
+                }
+                placeholder="例如 4096"
+                type="number"
+                min="1"
+                step="1"
+              />
+            </label>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function renderDefaultSettings() {
+    return (
+      <>
+        {renderEditorToolbar()}
+        <section className="card">
+          <h2>默认模式配置</h2>
+          <div className="field-grid">
+            <label>
+              <span>头像路径（PNG）</span>
+              <input
+                value={defaultForm.avatarPath}
+                onChange={(event) =>
+                  setDefaultForm((prev) => ({ ...prev, avatarPath: event.target.value }))
+                }
+                placeholder="/assets/pet/ava.png"
+              />
+            </label>
+            <label>
+              <span>Context Limit</span>
+              <input
+                value={defaultForm.contextLimit}
+                onChange={(event) =>
+                  setDefaultForm((prev) => ({ ...prev, contextLimit: event.target.value }))
+                }
+                placeholder="12"
+                type="number"
+                min="1"
+                max="200"
+                step="1"
+              />
+            </label>
+            <label className="wide">
+              <span>系统提示词</span>
+              <textarea
+                value={defaultForm.systemPrompt}
+                onChange={(event) =>
+                  setDefaultForm((prev) => ({ ...prev, systemPrompt: event.target.value }))
+                }
+                rows={8}
+              />
+            </label>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function renderRoleplaySettings() {
+    return (
+      <>
+        {renderEditorToolbar()}
+        <section className="card">
+          <h2>扮演模式配置</h2>
+          <div className="field-grid">
+            <label>
+              <span>头像路径（PNG）</span>
+              <input
+                value={roleplayForm.avatarPath}
+                onChange={(event) =>
+                  setRoleplayForm((prev) => ({ ...prev, avatarPath: event.target.value }))
+                }
+                placeholder="/assets/pet/av3a.png"
+              />
+            </label>
+            <label>
+              <span>Context Limit</span>
+              <input
+                value={roleplayForm.contextLimit}
+                onChange={(event) =>
+                  setRoleplayForm((prev) => ({ ...prev, contextLimit: event.target.value }))
+                }
+                placeholder="12"
+                type="number"
+                min="1"
+                max="200"
+                step="1"
+              />
+            </label>
+            <label className="wide">
+              <span>系统提示词</span>
+              <textarea
+                value={roleplayForm.systemPrompt}
+                onChange={(event) =>
+                  setRoleplayForm((prev) => ({ ...prev, systemPrompt: event.target.value }))
+                }
+                rows={8}
+              />
+            </label>
+            <label className="wide">
+              <span>开场白（可选）</span>
+              <textarea
+                value={roleplayForm.openingMessage}
+                onChange={(event) =>
+                  setRoleplayForm((prev) => ({ ...prev, openingMessage: event.target.value }))
+                }
+                rows={4}
+              />
+            </label>
+          </div>
+        </section>
+      </>
+    );
+  }
+
+  function renderActivePage() {
+    if (activePage === PAGE_OVERVIEW) {
+      return renderOverview();
+    }
+    if (activePage === PAGE_API) {
+      return renderApiSettings();
+    }
+    if (activePage === PAGE_DEFAULT) {
+      return renderDefaultSettings();
+    }
+    return renderRoleplaySettings();
+  }
 
   return (
     <main className="settings-shell">
       <section className="settings-panel">
-        <header className="settings-header">
-          <div>
-            <p className="settings-kicker">Settings</p>
-            <h1>桌宠配置中心</h1>
-          </div>
-        </header>
+        <div className="settings-content">
+          <aside className="settings-sidebar" aria-label="设置导航">
+            <div className="sidebar-brand">
+              <p className="settings-kicker">Settings</p>
+              <h1>配置中心</h1>
+            </div>
+            {settingsPages.map((page) => (
+              <button
+                key={page.id}
+                className={`nav-btn ${activePage === page.id ? "active" : ""}`}
+                type="button"
+                onClick={() => setActivePage(page.id)}
+              >
+                <span className="nav-title">{page.title}</span>
+                <span className="nav-desc">{page.description}</span>
+              </button>
+            ))}
+          </aside>
 
-        <div className="tab-row">
-          <button
-            className={`tab-btn ${activeTab === TAB_API ? "active" : ""}`}
-            type="button"
-            onClick={() => setActiveTab(TAB_API)}
-          >
-            API 设置
-          </button>
-          <button
-            className={`tab-btn ${activeTab === TAB_ROLEPLAY ? "active" : ""}`}
-            type="button"
-            onClick={() => setActiveTab(TAB_ROLEPLAY)}
-          >
-            扮演角色设置
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="loading-wrap">加载中...</div>
-        ) : (
           <div className="settings-body">
-            {activeTab === TAB_API ? (
-              <>
-                <section className="card">
-                  <h2>DeepSeek API</h2>
-                  <div className="field-grid">
-                    <label>
-                      <span>API Key</span>
-                      <input
-                        value={providerForm.apiKey}
-                        onChange={(event) =>
-                          setProviderForm((prev) => ({ ...prev, apiKey: event.target.value }))
-                        }
-                        placeholder="sk-..."
-                      />
-                    </label>
-                    <label>
-                      <span>Base URL</span>
-                      <input
-                        value={providerForm.baseUrl}
-                        onChange={(event) =>
-                          setProviderForm((prev) => ({ ...prev, baseUrl: event.target.value }))
-                        }
-                        placeholder="https://api.deepseek.com/v1"
-                      />
-                    </label>
-                    <label>
-                      <span>Model</span>
-                      <input
-                        value={providerForm.modelName}
-                        onChange={(event) =>
-                          setProviderForm((prev) => ({ ...prev, modelName: event.target.value }))
-                        }
-                        placeholder="deepseek-chat"
-                      />
-                    </label>
-                    <label>
-                      <span>Temperature</span>
-                      <input
-                        value={providerForm.temperature}
-                        onChange={(event) =>
-                          setProviderForm((prev) => ({ ...prev, temperature: event.target.value }))
-                        }
-                        placeholder="0.7"
-                        type="number"
-                        min="0"
-                        max="2"
-                        step="0.1"
-                      />
-                    </label>
-                    <label>
-                      <span>Max Tokens (可选)</span>
-                      <input
-                        value={providerForm.maxTokens}
-                        onChange={(event) =>
-                          setProviderForm((prev) => ({ ...prev, maxTokens: event.target.value }))
-                        }
-                        placeholder="例如 4096"
-                        type="number"
-                        min="1"
-                        step="1"
-                      />
-                    </label>
-                  </div>
-                </section>
-
-                <section className="card">
-                  <h2>默认模式配置</h2>
-                  <div className="field-grid">
-                    <label>
-                      <span>头像路径（PNG）</span>
-                      <input
-                        value={defaultForm.avatarPath}
-                        onChange={(event) =>
-                          setDefaultForm((prev) => ({ ...prev, avatarPath: event.target.value }))
-                        }
-                        placeholder="/assets/pet/ava.png"
-                      />
-                    </label>
-                    <label className="wide">
-                      <span>系统提示词</span>
-                      <textarea
-                        value={defaultForm.systemPrompt}
-                        onChange={(event) =>
-                          setDefaultForm((prev) => ({ ...prev, systemPrompt: event.target.value }))
-                        }
-                        rows={6}
-                      />
-                    </label>
-                    <label>
-                      <span>Context Limit</span>
-                      <input
-                        value={defaultForm.contextLimit}
-                        onChange={(event) =>
-                          setDefaultForm((prev) => ({ ...prev, contextLimit: event.target.value }))
-                        }
-                        placeholder="12"
-                        type="number"
-                        min="1"
-                        max="200"
-                        step="1"
-                      />
-                    </label>
-                  </div>
-                </section>
-              </>
-            ) : (
-              <section className="card">
-                <h2>扮演模式配置</h2>
-                <div className="field-grid">
-                  <label>
-                    <span>头像路径（PNG）</span>
-                    <input
-                      value={roleplayForm.avatarPath}
-                      onChange={(event) =>
-                        setRoleplayForm((prev) => ({ ...prev, avatarPath: event.target.value }))
-                      }
-                      placeholder="/assets/pet/av3a.png"
-                    />
-                  </label>
-                  <label className="wide">
-                    <span>系统提示词</span>
-                    <textarea
-                      value={roleplayForm.systemPrompt}
-                      onChange={(event) =>
-                        setRoleplayForm((prev) => ({ ...prev, systemPrompt: event.target.value }))
-                      }
-                      rows={7}
-                    />
-                  </label>
-                  <label className="wide">
-                    <span>开场白（可选）</span>
-                    <textarea
-                      value={roleplayForm.openingMessage}
-                      onChange={(event) =>
-                        setRoleplayForm((prev) => ({ ...prev, openingMessage: event.target.value }))
-                      }
-                      rows={4}
-                    />
-                  </label>
-                  <label>
-                    <span>Context Limit</span>
-                    <input
-                      value={roleplayForm.contextLimit}
-                      onChange={(event) =>
-                        setRoleplayForm((prev) => ({ ...prev, contextLimit: event.target.value }))
-                      }
-                      placeholder="12"
-                      type="number"
-                      min="1"
-                      max="200"
-                      step="1"
-                    />
-                  </label>
-                </div>
-              </section>
-            )}
+            {loading ? <div className="loading-wrap">加载中...</div> : renderActivePage()}
           </div>
-        )}
-
-        <footer className="settings-footer">
-          <p className={statusClassName}>{statusText || "状态就绪"}</p>
-          <button className="save-btn" type="button" onClick={onSave} disabled={loading || saving}>
-            {saving ? "保存中..." : "应用设置"}
-          </button>
-        </footer>
+        </div>
       </section>
     </main>
   );
