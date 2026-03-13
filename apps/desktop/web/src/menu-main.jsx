@@ -17,6 +17,7 @@ function MenuApp() {
   const [fading, setFading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState(null);
   const [messages, setMessages] = useState([]);
   const [historyCursor, setHistoryCursor] = useState(null);
   const [hasMoreHistory, setHasMoreHistory] = useState(false);
@@ -61,6 +62,7 @@ function MenuApp() {
   }
 
   function resetHistoryState() {
+    setSelectedMessage(null);
     setMessages([]);
     setHistoryCursor(null);
     setHasMoreHistory(false);
@@ -115,7 +117,7 @@ function MenuApp() {
   }
 
   function onHistoryScroll(event) {
-    if (modeRef.current !== "history") {
+    if (modeRef.current !== "history" || selectedMessage) {
       return;
     }
     const el = event.currentTarget;
@@ -126,6 +128,14 @@ function MenuApp() {
     void loadHistoryPage({ reset: false }).finally(() => {
       setLoadingMoreHistory(false);
     });
+  }
+
+  function onSelectHistoryMessage(message) {
+    setSelectedMessage(message);
+  }
+
+  function onBackToHistoryList() {
+    setSelectedMessage(null);
   }
 
   async function onHistoryClick() {
@@ -220,10 +230,15 @@ function MenuApp() {
     }
 
     return messages.map((message, index) => (
-      <article className="history-item" key={`${message.id ?? index}-${index}`}>
+      <button
+        className="history-item history-item-btn"
+        key={`${message.id ?? index}-${index}`}
+        onClick={() => onSelectHistoryMessage(message)}
+        type="button"
+      >
         <p className="history-role">{message.role === "assistant" ? "桌宠" : "你"}</p>
         <p className="history-text">{message.content}</p>
-      </article>
+      </button>
     ));
   }, [messages]);
 
@@ -238,16 +253,30 @@ function MenuApp() {
       ) : (
         <section className="history-panel-mini">
           <header className="history-mini-header">
-            <strong>最近消息</strong>
+            {selectedMessage ? (
+              <button className="history-mini-back" onClick={onBackToHistoryList} type="button">
+                ←
+              </button>
+            ) : (
+              <span aria-hidden="true" className="history-mini-spacer" />
+            )}
+            <strong>{selectedMessage ? "消息详情" : "最近消息"}</strong>
             <button className="history-mini-close" type="button" onClick={onCloseHistory}>
               ×
             </button>
           </header>
-          <div className="history-mini-list" ref={historyListRef} onScroll={onHistoryScroll}>
-            {historyContent}
-            {loadingMoreHistory ? <p className="history-empty">加载中...</p> : null}
-            {!hasMoreHistory && messages.length ? <p className="history-empty">没有更多了</p> : null}
-          </div>
+          {selectedMessage ? (
+            <article className="history-detail">
+              <p className="history-role">{selectedMessage.role === "assistant" ? "桌宠" : "你"}</p>
+              <p className="history-text-full">{selectedMessage.content}</p>
+            </article>
+          ) : (
+            <div className="history-mini-list" ref={historyListRef} onScroll={onHistoryScroll}>
+              {historyContent}
+              {loadingMoreHistory ? <p className="history-empty">加载中...</p> : null}
+              {!hasMoreHistory && messages.length ? <p className="history-empty">没有更多了</p> : null}
+            </div>
+          )}
         </section>
       )}
     </main>

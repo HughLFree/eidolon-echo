@@ -75,14 +75,34 @@ body,
 }
 
 .history-mini-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 24px 1fr 24px;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
 }
 
 .history-mini-header strong {
   font-size: 13px;
   font-weight: 700;
+  text-align: center;
+}
+
+.history-mini-spacer {
+  width: 24px;
+  height: 24px;
+}
+
+.history-mini-back {
+  border: 0;
+  border-radius: 8px;
+  width: 24px;
+  height: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f3f4f6;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
 }
 
 .history-mini-close {
@@ -95,6 +115,7 @@ body,
   font-size: 18px;
   line-height: 1;
   cursor: pointer;
+  padding: 0;
 }
 
 .history-mini-list {
@@ -119,6 +140,28 @@ body,
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.history-item-btn {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.history-item-btn:hover {
+  background: rgba(43, 43, 49, 0.74);
+}
+
+.history-item-btn:focus-visible,
+.history-mini-back:focus-visible,
+.history-mini-close:focus-visible {
+  outline: 1px solid rgba(147, 197, 253, 0.88);
+  outline-offset: 2px;
+}
+
 .history-role {
   margin: 0 0 4px;
   font-size: 11px;
@@ -134,6 +177,38 @@ body,
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.history-detail {
+  border-radius: 10px;
+  padding: 10px 10px 12px;
+  background: rgba(31, 31, 36, 0.68);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(229, 231, 235, 0.36) transparent;
+}
+
+.history-detail::-webkit-scrollbar {
+  width: 6px;
+}
+
+.history-detail::-webkit-scrollbar-thumb {
+  background: rgba(229, 231, 235, 0.34);
+  border-radius: 999px;
+}
+
+.history-detail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.history-text-full {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #f9fafb;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .history-empty {
