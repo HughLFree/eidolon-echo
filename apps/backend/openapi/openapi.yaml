@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: Desktop AI Backend API
+  title: Eidolon-Echo Backend API
   version: 0.1.0
   description: API for desktop AI pet chat, history, providers and profiles.
 
@@ -438,11 +438,25 @@ components:
 
     HealthResponse:
       type: object
-      required: [status]
+      required: [status, ai_precheck]
       properties:
         status:
           type: string
           example: ok
+        ai_precheck:
+          $ref: "#/components/schemas/StartupAiPrecheck"
+
+    StartupAiPrecheck:
+      type: object
+      required: [ready, provider]
+      properties:
+        ready:
+          type: boolean
+        provider:
+          type: string
+        message:
+          type: string
+          nullable: true
 
     StoredMessage:
       type: object
@@ -505,7 +519,7 @@ components:
           nullable: true
         model_name:
           type: string
-        api_key_ref:
+        api_key:
           type: string
           nullable: true
         enabled:
@@ -542,7 +556,7 @@ components:
           nullable: true
         model_name:
           type: string
-        api_key_ref:
+        api_key:
           type: string
           nullable: true
         enabled:
@@ -571,7 +585,7 @@ components:
           nullable: true
         model_name:
           type: string
-        api_key_ref:
+        api_key:
           type: string
           nullable: true
         enabled:

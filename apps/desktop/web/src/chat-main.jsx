@@ -135,11 +135,11 @@ function toUserFriendlyErrorMessage(error) {
     || lower.includes("invalid api key")
     || lower.includes("api key")
     || lower.includes("missing env var")
-    || lower.includes("api_key_ref is empty")
+    || lower.includes("api_key is empty")
     || lower.includes("authentication fails")
     || lower.includes("invalid_request_error")
   ) {
-    return "模型鉴权失败。请在“设置 -> API 设置”检查 API key / api_key_ref / base_url。";
+    return "模型鉴权失败。请在“设置 -> API 设置”检查 api_key / base_url / model_name。";
   }
 
   if (

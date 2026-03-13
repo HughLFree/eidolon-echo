@@ -39,22 +39,25 @@
 ## 3.1 启动后端
 
 ```bash
-cargo run -p desktop-ai-backend
+cargo run -p eidolon-echo-backend
 ```
 
 ## 3.2 启动桌面端
 
 ```bash
-cd apps/desktop/web
-npm install
-cd ../src-tauri
+cd apps/desktop/src-tauri
 cargo tauri dev
 ```
+
+提示：
+- 首次运行前先执行 `cd apps/desktop/web && npm install`
+- 日常开发建议固定在 `apps/desktop/src-tauri` 目录启动 Tauri
 
 ## 3.3 常用检查
 
 ```bash
-cargo check -p desktop-ai-backend -p desktop-ai-shell
+cargo check -p eidolon-echo-backend -p eidolon-echo-shell
+cargo test -p eidolon-echo-backend -p eidolon-echo-shell
 cd apps/desktop/web && npm run build
 ```
 
@@ -85,7 +88,7 @@ cd apps/desktop/web && npm run build
 1. 后端：扩展 `db/providers.rs` 或 `db/profiles.rs` 字段读写。
 2. 后端：扩展 `handlers/providers.rs` 或 `handlers/profiles.rs` 请求体校验。
 3. 前端：`web/src/api/settings.js` 增加字段传输。
-4. 前端：`web/src/settings-main.jsx` 增加表单项与保存逻辑。
+4. 前端：`web/src/settings-app.jsx` 增加表单项与保存逻辑。
 5. 文档：更新 `openapi.yaml`、`http-api.md`。
 
 ## 4.4 新增桌面窗口
@@ -95,6 +98,16 @@ cd apps/desktop/web && npm run build
 3. 壳层：在 `window_manager.rs` 增加打开/定位逻辑。
 4. 命令：必要时在 `commands/` 新增 Tauri command，并在 `desktop_pet/mod.rs` 注册。
 5. 托盘或现有窗口触发：补入口动作。
+
+## 4.5 修改品牌名/进程名
+
+当前产品名为 `Eidolon-Echo`，相关标识分三层：
+
+- 用户可见名：`apps/desktop/src-tauri/tauri.conf.json`
+- Rust 包名/进程名：`apps/backend/Cargo.toml`、`apps/desktop/src-tauri/Cargo.toml`
+- sidecar 打包名：`apps/desktop/src-tauri/build.rs`、`apps/desktop/src-tauri/scripts/prepare-release-sidecar.sh`
+
+改名时要三层一起改，否则容易出现应用名、活动监视器进程名和 sidecar 文件名不一致。
 
 ## 5. 代码约定
 
@@ -117,6 +130,9 @@ cd apps/desktop/web && npm run build
 - 设置保存后未生效
   - 检查 `/api/profiles`、`/api/ai-providers` 返回是否更新。
   - 检查请求最终使用的 `provider_id/system_prompt/context_limit`。
+- `cargo tauri dev` 启动失败
+  - 建议确认当前目录为 `apps/desktop/src-tauri`。
+  - 首次运行前确认 `apps/desktop/web` 已执行 `npm install`。
 - 窗口行为异常（不显示/不定位）
   - 看 `desktop_pet/window_manager.rs` 是否触发了对应 show/sync。
   - 看 `overlay/macos.rs` 日志与面板状态。

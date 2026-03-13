@@ -4,6 +4,10 @@ Base URL: `http://127.0.0.1:3001`
 
 OpenAPI: `GET /api/openapi.yaml`
 
+Notes:
+- 桌面端默认通过本地 sidecar 调用这些接口。
+- 当前应用名为 `Eidolon-Echo`，但接口前缀仍为 `/api/*`。
+
 ## Health
 
 - Method: `GET`
@@ -11,7 +15,14 @@ OpenAPI: `GET /api/openapi.yaml`
 - Response:
 
 ```json
-{ "status": "ok" }
+{
+  "status": "ok",
+  "ai_precheck": {
+    "ready": true,
+    "provider": "deepseek",
+    "message": null
+  }
+}
 ```
 
 ## Chat
@@ -86,13 +97,17 @@ Create request example:
   "provider_type": "openai_compat",
   "base_url": "https://api.openai.com/v1",
   "model_name": "gpt-4o-mini",
-  "api_key_ref": "sk-your-real-key",
+  "api_key": "sk-your-real-key",
   "enabled": true,
   "is_default": true,
   "temperature": 0.7,
   "max_tokens": 4096
 }
 ```
+
+Notes:
+- `api_key` 当前会以明文形式保存在本地 SQLite，仅适合单机本地使用。
+- 设置中心对应位置：`API 设置` 页面。
 
 ## Profiles CRUD
 
@@ -122,3 +137,4 @@ Notes:
 - `memory_enabled` is controlled by mode on server side and returned in response.
 - `default -> memory_enabled=false`
 - `roleplay -> memory_enabled=true`
+- 桌面端设置中心对应位置：`默认模式` 与 `角色扮演` 页面。

@@ -4,6 +4,7 @@ use super::ChatMessage;
 use crate::db::StoredMessage;
 use chrono::Utc;
 use std::collections::{HashMap, VecDeque};
+use tracing::warn;
 
 const DEFAULT_MAX_MESSAGES_PER_CONVERSATION: usize = 100;
 const DEFAULT_MAX_CACHED_CONVERSATIONS: usize = 128;
@@ -151,13 +152,16 @@ impl ContextManager {
         before_id: Option<i64>,
     ) -> Vec<StoredMessage> {
         if !self.conversation_contexts.contains_key(&conversation_id) {
+            if self.conversation_last_access.contains_key(&conversation_id) {
+                self.recover_missing_context(conversation_id, "list_cached_messages_desc");
+            }
             return Vec::new();
         }
         self.touch_conversation_key(conversation_id);
-        let context = self
-            .conversation_contexts
-            .get(&conversation_id)
-            .expect("conversation context exists after contains");
+        let Some(context) = self.conversation_context(conversation_id) else {
+            self.recover_missing_context(conversation_id, "list_cached_messages_desc");
+            return Vec::new();
+        };
 
         context
             .messages
@@ -171,6 +175,9 @@ impl ContextManager {
 
     pub fn conversation_cache_meta(&mut self, conversation_id: i64) -> ConversationCacheMeta {
         if !self.conversation_contexts.contains_key(&conversation_id) {
+            if self.conversation_last_access.contains_key(&conversation_id) {
+                self.recover_missing_context(conversation_id, "conversation_cache_meta");
+            }
             return ConversationCacheMeta {
                 hydrated: false,
                 db_exhausted: false,
@@ -179,10 +186,15 @@ impl ContextManager {
             };
         }
         self.touch_conversation_key(conversation_id);
-        let context = self
-            .conversation_contexts
-            .get(&conversation_id)
-            .expect("conversation context exists after contains");
+        let Some(context) = self.conversation_context(conversation_id) else {
+            self.recover_missing_context(conversation_id, "conversation_cache_meta");
+            return ConversationCacheMeta {
+                hydrated: false,
+                db_exhausted: false,
+                cached_len: 0,
+                oldest_cached_id: None,
+            };
+        };
 
         ConversationCacheMeta {
             hydrated: context.db_hydrated,
@@ -243,15 +255,11 @@ impl ContextManager {
     }
 
     fn ensure_conversation_context(&mut self, conversation_id: i64) -> &mut ConversationContext {
-        if !self.conversation_contexts.contains_key(&conversation_id) {
-            self.conversation_contexts
-                .insert(conversation_id, ConversationContext::new());
-        }
         self.touch_conversation_key(conversation_id);
         self.evict_lru_conversations(Some(conversation_id));
         self.conversation_contexts
-            .get_mut(&conversation_id)
-            .expect("conversation context must exist after insertion")
+            .entry(conversation_id)
+            .or_insert_with(ConversationContext::new)
     }
 
     fn trim_conversation_messages(
@@ -287,5 +295,46 @@ impl ContextManager {
             self.conversation_contexts.remove(&key);
             self.conversation_last_access.remove(&key);
         }
+    }
+
+    fn conversation_context(&self, conversation_id: i64) -> Option<&ConversationContext> {
+        self.conversation_contexts.get(&conversation_id)
+    }
+
+    fn recover_missing_context(&mut self, conversation_id: i64, operation: &str) {
+        warn!(
+            conversation_id,
+            operation,
+            "context cache metadata was present but conversation context was missing; clearing stale access state"
+        );
+        self.conversation_last_access.remove(&conversation_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_cached_messages_desc_recovers_from_stale_access_state() {
+        let mut manager = ContextManager::default();
+        manager.conversation_last_access.insert(42, 1);
+
+        let messages = manager.list_cached_messages_desc(42, 10, None);
+
+        assert!(messages.is_empty());
+        assert!(!manager.conversation_last_access.contains_key(&42));
+    }
+
+    #[test]
+    fn conversation_cache_meta_recovers_from_stale_access_state() {
+        let mut manager = ContextManager::default();
+        manager.conversation_last_access.insert(7, 1);
+
+        let meta = manager.conversation_cache_meta(7);
+
+        assert!(!meta.hydrated);
+        assert_eq!(meta.cached_len, 0);
+        assert!(!manager.conversation_last_access.contains_key(&7));
     }
 }

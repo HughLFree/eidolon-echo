@@ -195,7 +195,7 @@ impl ProviderConfig {
         }
 
         bail!(
-            "missing API key for provider '{provider_name}'; set 'api_key' in config or provider api_key_ref in database settings"
+            "missing API key for provider '{provider_name}'; set 'api_key' in config or provider api_key in database settings"
         )
     }
 }

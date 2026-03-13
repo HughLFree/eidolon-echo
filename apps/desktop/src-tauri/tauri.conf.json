@@ -1,10 +1,10 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AI Desktop Pet",
+  "productName": "Eidolon-Echo",
   "version": "0.1.0",
-  "identifier": "com.example.ai-desktop-pet",
+  "identifier": "io.github.hughlfree.eidolonecho",
   "build": {
-    "beforeDevCommand": "cd /Users/hugh/mycode/desktop-ai/apps/desktop/web && npm run dev",
+    "beforeDevCommand": "ROOT=\"$PWD\"; while [ \"$ROOT\" != \"/\" ]; do if [ -d \"$ROOT/apps/desktop/web\" ]; then cd \"$ROOT/apps/desktop/web\" && npm run dev; exit $?; fi; if [ -d \"$ROOT/web\" ] && [ -f \"$ROOT/src-tauri/tauri.conf.json\" ]; then cd \"$ROOT/web\" && npm run dev; exit $?; fi; ROOT=\"$(dirname \"$ROOT\")\"; done; echo 'web dir not found' >&2; exit 1",
     "beforeBuildCommand": "bash ./scripts/prepare-release-sidecar.sh",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../web/dist"
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "AI Desktop Pet",
+        "title": "Eidolon-Echo",
         "url": "index.html",
         "width": 189,
         "height": 196,
@@ -25,7 +25,7 @@
       },
       {
         "label": "chat",
-        "title": "AI Pet Chat",
+        "title": "Eidolon-Echo Chat",
         "url": "chat.html",
         "width": 189,
         "height": 44,
@@ -37,7 +37,7 @@
       },
       {
         "label": "bubble",
-        "title": "AI Pet Bubble",
+        "title": "Eidolon-Echo Bubble",
         "url": "bubble.html",
         "width": 320,
         "height": 192,
@@ -49,7 +49,7 @@
       },
       {
         "label": "menu",
-        "title": "AI Pet Panel",
+        "title": "Eidolon-Echo Panel",
         "url": "menu.html",
         "width": 76,
         "height": 140,
@@ -67,6 +67,6 @@
     "resources": {
       "../../backend/config/default.toml": "config/default.toml"
     },
-    "externalBin": ["binaries/desktop-ai-backend"]
+    "externalBin": ["binaries/eidolon-echo-backend"]
   }
 }

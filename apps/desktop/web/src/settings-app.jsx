@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { getName, getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
 import { BACKEND_BASE_URL } from "./config";
 import {
   createAiProvider,
@@ -21,6 +22,7 @@ const PAGE_OVERVIEW = "overview";
 const PAGE_API = "api";
 const PAGE_DEFAULT = "default";
 const PAGE_ROLEPLAY = "roleplay";
+const PAGE_MISC = "misc";
 
 const settingsPages = [
   {
@@ -42,6 +44,11 @@ const settingsPages = [
     id: PAGE_ROLEPLAY,
     title: "角色扮演",
     description: "角色设定与开场白"
+  },
+  {
+    id: PAGE_MISC,
+    title: "其他",
+    description: "数据与附加操作"
   }
 ];
 
@@ -103,10 +110,11 @@ function trimOrNull(raw) {
 
 export default function SettingsApp() {
   const [activePage, setActivePage] = useState(PAGE_OVERVIEW);
-  const [appName, setAppName] = useState("桌宠配置中心");
+  const [appName, setAppName] = useState("Eidolon-Echo");
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [clearingData, setClearingData] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [statusKind, setStatusKind] = useState("neutral");
 
@@ -131,11 +139,11 @@ export default function SettingsApp() {
         if (!mounted) {
           return;
         }
-        setAppName(name || "桌宠配置中心");
+        setAppName(name || "Eidolon-Echo");
         setAppVersion(version || "0.1.0");
       } catch (_error) {
         if (mounted) {
-          setAppName("桌宠配置中心");
+          setAppName("Eidolon-Echo");
           setAppVersion("0.1.0");
         }
       }
@@ -171,47 +179,54 @@ export default function SettingsApp() {
           providers[0] ||
           null;
 
-        if (provider) {
-          setProviderExists(true);
-          setProviderId(provider.id);
-          setProviderForm({
-            apiKey: provider.api_key_ref || "",
-            baseUrl: provider.base_url || "",
-            modelName: provider.model_name || "",
-            temperature:
-              typeof provider.temperature === "number" ? String(provider.temperature) : "",
-            maxTokens: typeof provider.max_tokens === "number" ? String(provider.max_tokens) : ""
-          });
-        }
+        setProviderExists(Boolean(provider));
+        setProviderId(provider?.id || DEEPSEEK_PROVIDER_ID);
+        setProviderForm(
+          provider
+            ? {
+                apiKey: provider.api_key || "",
+                baseUrl: provider.base_url || "",
+                modelName: provider.model_name || "",
+                temperature:
+                  typeof provider.temperature === "number" ? String(provider.temperature) : "",
+                maxTokens:
+                  typeof provider.max_tokens === "number" ? String(provider.max_tokens) : ""
+              }
+            : defaultProviderForm
+        );
 
         const defaultProfile = profiles.find((item) => item.mode === "default") || null;
-        if (defaultProfile) {
-          setDefaultProfileExists(true);
-          setDefaultProfileId(defaultProfile.id);
-          setDefaultForm({
-            avatarPath: defaultProfile.avatar_path || "",
-            systemPrompt: defaultProfile.system_prompt || "",
-            contextLimit:
-              typeof defaultProfile.context_limit === "number"
-                ? String(defaultProfile.context_limit)
-                : defaultModeForm.contextLimit
-          });
-        }
+        setDefaultProfileExists(Boolean(defaultProfile));
+        setDefaultProfileId(defaultProfile?.id || DEFAULT_PROFILE_ID);
+        setDefaultForm(
+          defaultProfile
+            ? {
+                avatarPath: defaultProfile.avatar_path || "",
+                systemPrompt: defaultProfile.system_prompt || "",
+                contextLimit:
+                  typeof defaultProfile.context_limit === "number"
+                    ? String(defaultProfile.context_limit)
+                    : defaultModeForm.contextLimit
+              }
+            : defaultModeForm
+        );
 
         const roleplayProfile = profiles.find((item) => item.mode === "roleplay") || null;
-        if (roleplayProfile) {
-          setRoleplayProfileExists(true);
-          setRoleplayProfileId(roleplayProfile.id);
-          setRoleplayForm({
-            avatarPath: roleplayProfile.avatar_path || "",
-            systemPrompt: roleplayProfile.system_prompt || "",
-            openingMessage: roleplayProfile.opening_message || "",
-            contextLimit:
-              typeof roleplayProfile.context_limit === "number"
-                ? String(roleplayProfile.context_limit)
-                : roleplayModeForm.contextLimit
-          });
-        }
+        setRoleplayProfileExists(Boolean(roleplayProfile));
+        setRoleplayProfileId(roleplayProfile?.id || ROLEPLAY_PROFILE_ID);
+        setRoleplayForm(
+          roleplayProfile
+            ? {
+                avatarPath: roleplayProfile.avatar_path || "",
+                systemPrompt: roleplayProfile.system_prompt || "",
+                openingMessage: roleplayProfile.opening_message || "",
+                contextLimit:
+                  typeof roleplayProfile.context_limit === "number"
+                    ? String(roleplayProfile.context_limit)
+                    : roleplayModeForm.contextLimit
+              }
+            : roleplayModeForm
+        );
       } catch (error) {
         if (!cancelled) {
           setStatusKind("error");
@@ -241,7 +256,7 @@ export default function SettingsApp() {
         provider_type: "deepseek",
         base_url: trimOrNull(providerForm.baseUrl),
         model_name: trimOrNull(providerForm.modelName) || "deepseek-chat",
-        api_key_ref: trimOrNull(providerForm.apiKey),
+        api_key: trimOrNull(providerForm.apiKey),
         enabled: true,
         is_default: true,
         temperature: normalizeOptionalNumber(providerForm.temperature, { min: 0, max: 2 }),
@@ -313,6 +328,94 @@ export default function SettingsApp() {
       setStatusText(`保存失败：${error.message}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onClearLocalData() {
+    const confirmed = window.confirm(
+      "这会删除本地聊天记录、模型配置和数据库内容，并立即重建一个全新的本地数据目录。是否继续？"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingData(true);
+    setStatusKind("neutral");
+    setStatusText("正在清除本地数据并重建后端...");
+
+    try {
+      const result = await invoke("clear_local_data");
+
+      setProviderExists(false);
+      setProviderId(DEEPSEEK_PROVIDER_ID);
+      setProviderForm(defaultProviderForm);
+      setDefaultProfileExists(false);
+      setDefaultProfileId(DEFAULT_PROFILE_ID);
+      setDefaultForm(defaultModeForm);
+      setRoleplayProfileExists(false);
+      setRoleplayProfileId(ROLEPLAY_PROFILE_ID);
+      setRoleplayForm(roleplayModeForm);
+
+      const [providers, profiles] = await Promise.all([
+        listAiProviders(BACKEND_BASE_URL, { withDisabled: true }),
+        listProfiles(BACKEND_BASE_URL)
+      ]);
+
+      const provider =
+        providers.find((item) => String(item.provider_type).toLowerCase().includes("deepseek")) ||
+        providers.find((item) => item.is_default) ||
+        providers[0] ||
+        null;
+
+      if (provider) {
+        setProviderExists(true);
+        setProviderId(provider.id);
+        setProviderForm({
+          apiKey: provider.api_key || "",
+          baseUrl: provider.base_url || "",
+          modelName: provider.model_name || "",
+          temperature:
+            typeof provider.temperature === "number" ? String(provider.temperature) : "",
+          maxTokens: typeof provider.max_tokens === "number" ? String(provider.max_tokens) : ""
+        });
+      }
+
+      const defaultProfile = profiles.find((item) => item.mode === "default") || null;
+      if (defaultProfile) {
+        setDefaultProfileExists(true);
+        setDefaultProfileId(defaultProfile.id);
+        setDefaultForm({
+          avatarPath: defaultProfile.avatar_path || "",
+          systemPrompt: defaultProfile.system_prompt || "",
+          contextLimit:
+            typeof defaultProfile.context_limit === "number"
+              ? String(defaultProfile.context_limit)
+              : defaultModeForm.contextLimit
+        });
+      }
+
+      const roleplayProfile = profiles.find((item) => item.mode === "roleplay") || null;
+      if (roleplayProfile) {
+        setRoleplayProfileExists(true);
+        setRoleplayProfileId(roleplayProfile.id);
+        setRoleplayForm({
+          avatarPath: roleplayProfile.avatar_path || "",
+          systemPrompt: roleplayProfile.system_prompt || "",
+          openingMessage: roleplayProfile.opening_message || "",
+          contextLimit:
+            typeof roleplayProfile.context_limit === "number"
+              ? String(roleplayProfile.context_limit)
+              : roleplayModeForm.contextLimit
+        });
+      }
+
+      setStatusKind("success");
+      setStatusText(`本地数据已清除，后端已重建。数据目录：${result.dataDir || result.data_dir}`);
+    } catch (error) {
+      setStatusKind("error");
+      setStatusText(`清除失败：${error.message}`);
+    } finally {
+      setClearingData(false);
     }
   }
 
@@ -584,6 +687,32 @@ export default function SettingsApp() {
     );
   }
 
+  function renderMiscSettings() {
+    return (
+      <>
+        <section className="card danger-card">
+          <h2>本地数据</h2>
+          <div className="danger-copy">
+            <p>
+              清除后会删除本地聊天记录、provider 配置、角色配置和 SQLite 数据库，然后立即重建一个全新的本地数据目录。
+            </p>
+            <p>这个操作不可撤销，当前存储的 `api_key` 也会一起删除。</p>
+          </div>
+          <div className="danger-actions">
+            <button
+              className="danger-btn"
+              type="button"
+              onClick={onClearLocalData}
+              disabled={loading || saving || clearingData}
+            >
+              {clearingData ? "清除中..." : "清除本地数据"}
+            </button>
+          </div>
+        </section>
+      </>
+    );
+  }
+
   function renderActivePage() {
     if (activePage === PAGE_OVERVIEW) {
       return renderOverview();
@@ -594,7 +723,10 @@ export default function SettingsApp() {
     if (activePage === PAGE_DEFAULT) {
       return renderDefaultSettings();
     }
-    return renderRoleplaySettings();
+    if (activePage === PAGE_ROLEPLAY) {
+      return renderRoleplaySettings();
+    }
+    return renderMiscSettings();
   }
 
   return (
@@ -604,7 +736,7 @@ export default function SettingsApp() {
           <aside className="settings-sidebar" aria-label="设置导航">
             <div className="sidebar-brand">
               <p className="settings-kicker">Settings</p>
-              <h1>配置中心</h1>
+              <h1>Eidolon-Echo</h1>
             </div>
             {settingsPages.map((page) => (
               <button

@@ -1,4 +1,4 @@
--- desktop-ai backend canonical schema (single-shot init, latest baseline).
+-- eidolon-echo backend canonical schema (single-shot init, latest baseline).
 
 -- ai_providers: runtime model provider registry.
 CREATE TABLE IF NOT EXISTS ai_providers (
@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS ai_providers (
   provider_type TEXT NOT NULL,
   base_url TEXT,
   model_name TEXT NOT NULL,
-  api_key_ref TEXT,
+  api_key TEXT,
   enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
   is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
   temperature REAL,

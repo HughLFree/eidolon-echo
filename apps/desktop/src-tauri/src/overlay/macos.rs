@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri_nspanel::{
     tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt,
 };
+use tracing::info;
 
 tauri_panel! {
     panel!(DesktopPetPanel {
@@ -42,7 +43,7 @@ fn configure_panel(window: &WebviewWindow, initial_level: PanelLevel) -> Result<
         panel.set_becomes_key_only_if_needed(false);
     }
     panel.set_level(initial_level.value());
-    eprintln!(
+    info!(
         "overlay panel configured: label={}, behavior=CanJoinAllSpaces|Stationary|FullScreenAuxiliary, level={}",
         window.label(),
         initial_level.value()
@@ -180,7 +181,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<(), String> {
         apply_visibility_inner(&app_handle, true, true, false, false)
     });
     if result.is_ok() {
-        eprintln!("overlay bootstrap succeeded on macOS");
+        info!("overlay bootstrap succeeded on macOS");
     }
     result
 }

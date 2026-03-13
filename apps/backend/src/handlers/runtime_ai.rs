@@ -47,7 +47,7 @@ pub(super) async fn resolve_mode_openai_compat_client(
         .unwrap_or("https://api.deepseek.com/v1")
         .to_string();
 
-    let api_key = resolve_provider_api_key(provider.api_key_ref.as_deref())?;
+    let api_key = resolve_provider_api_key(provider.api_key.as_deref())?;
     let temperature = provider.temperature.unwrap_or(0.7).clamp(0.0, 2.0) as f32;
     let max_tokens = normalize_provider_max_tokens(provider.max_tokens);
 
@@ -64,7 +64,7 @@ fn resolve_provider_api_key(raw: Option<&str>) -> anyhow::Result<String> {
     let api_key = raw
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("provider api_key_ref is empty"))?;
+        .ok_or_else(|| anyhow::anyhow!("provider api_key is empty"))?;
 
     Ok(api_key.to_string())
 }

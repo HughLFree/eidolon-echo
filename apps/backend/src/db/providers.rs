@@ -6,7 +6,7 @@ use sqlx::SqlitePool;
 pub async fn list_ai_providers(pool: &SqlitePool) -> Result<Vec<AiProvider>> {
     let rows = sqlx::query(
         r#"
-        SELECT id, name, provider_type, base_url, model_name, api_key_ref, enabled, is_default, temperature, max_tokens, created_at, updated_at
+        SELECT id, name, provider_type, base_url, model_name, api_key, enabled, is_default, temperature, max_tokens, created_at, updated_at
         FROM ai_providers
         ORDER BY is_default DESC, updated_at DESC, id ASC
         "#,
@@ -24,7 +24,7 @@ pub async fn list_ai_providers(pool: &SqlitePool) -> Result<Vec<AiProvider>> {
 pub async fn get_ai_provider(pool: &SqlitePool, id: &str) -> Result<Option<AiProvider>> {
     let row = sqlx::query(
         r#"
-        SELECT id, name, provider_type, base_url, model_name, api_key_ref, enabled, is_default, temperature, max_tokens, created_at, updated_at
+        SELECT id, name, provider_type, base_url, model_name, api_key, enabled, is_default, temperature, max_tokens, created_at, updated_at
         FROM ai_providers
         WHERE id = ?
         "#,
@@ -39,7 +39,7 @@ pub async fn get_ai_provider(pool: &SqlitePool, id: &str) -> Result<Option<AiPro
 pub async fn get_default_ai_provider(pool: &SqlitePool) -> Result<Option<AiProvider>> {
     let row = sqlx::query(
         r#"
-        SELECT id, name, provider_type, base_url, model_name, api_key_ref, enabled, is_default, temperature, max_tokens, created_at, updated_at
+        SELECT id, name, provider_type, base_url, model_name, api_key, enabled, is_default, temperature, max_tokens, created_at, updated_at
         FROM ai_providers
         WHERE enabled = 1 AND is_default = 1
         ORDER BY updated_at DESC, id ASC
@@ -78,7 +78,7 @@ pub async fn create_ai_provider(
     sqlx::query(
         r#"
         INSERT INTO ai_providers (
-            id, name, provider_type, base_url, model_name, api_key_ref, enabled, is_default, temperature, max_tokens, created_at, updated_at
+            id, name, provider_type, base_url, model_name, api_key, enabled, is_default, temperature, max_tokens, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
@@ -87,7 +87,7 @@ pub async fn create_ai_provider(
     .bind(&payload.provider_type)
     .bind(&payload.base_url)
     .bind(&payload.model_name)
-    .bind(&payload.api_key_ref)
+    .bind(&payload.api_key)
     .bind(bool_to_i64(payload.enabled))
     .bind(bool_to_i64(payload.is_default))
     .bind(payload.temperature)
@@ -130,7 +130,7 @@ pub async fn update_ai_provider(
             provider_type = ?,
             base_url = ?,
             model_name = ?,
-            api_key_ref = ?,
+            api_key = ?,
             enabled = ?,
             is_default = ?,
             temperature = ?,
@@ -143,7 +143,7 @@ pub async fn update_ai_provider(
     .bind(&payload.provider_type)
     .bind(&payload.base_url)
     .bind(&payload.model_name)
-    .bind(&payload.api_key_ref)
+    .bind(&payload.api_key)
     .bind(bool_to_i64(payload.enabled))
     .bind(bool_to_i64(payload.is_default))
     .bind(payload.temperature)

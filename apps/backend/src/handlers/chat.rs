@@ -405,11 +405,11 @@ fn map_upstream_error_for_client(raw: &str) -> String {
         || lower.contains("unauthorized")
         || lower.contains("authentication")
         || lower.contains("invalid api key")
-        || lower.contains("api_key_ref is empty")
+        || lower.contains("api_key is empty")
         || lower.contains("missing env var")
         || lower.contains("authentication fails");
     if is_auth_error {
-        return "请求失败：模型鉴权失败，请在“设置 -> API 设置”检查 API key / api_key_ref / base_url。"
+        return "请求失败：模型鉴权失败，请在“设置 -> API 设置”检查 api_key / base_url / model_name。"
             .to_string();
     }
 

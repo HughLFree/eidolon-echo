@@ -12,6 +12,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
+use tracing::{error, warn};
 use window_manager::{
     bootstrap_desktop_pet, open_settings_window, sync_bubble_position, sync_chat_position,
     sync_menu_position, toggle_pet_windows,
@@ -26,12 +27,12 @@ fn bootstrap_overlay_deferred(app_handle: tauri::AppHandle) {
                 let _ = sync_menu_position(&app_handle);
             }
             Err(error) => {
-                eprintln!("overlay bootstrap failed: {error}");
+                error!("overlay bootstrap failed: {error}");
                 // Fallback so windows remain usable even if panel bootstrap fails.
                 if let Err(visibility_error) =
                     crate::overlay::apply_visibility(&app_handle, true, true, false, false)
                 {
-                    eprintln!("overlay fallback visibility failed: {visibility_error}");
+                    error!("overlay fallback visibility failed: {visibility_error}");
                 }
             }
         }
@@ -96,26 +97,26 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
             move |app: &tauri::AppHandle, event| match event.id.as_ref() {
                 "ai-mode-default" => {
                     if let Err(error) = set_ai_role_mode(app, AiRoleMode::Default) {
-                        eprintln!("set tray ai mode failed: {error}");
+                        warn!("set tray ai mode failed: {error}");
                     }
                     let _ = mode_default_item.set_checked(true);
                     let _ = mode_roleplay_item.set_checked(false);
                 }
                 "ai-mode-roleplay" => {
                     if let Err(error) = set_ai_role_mode(app, AiRoleMode::Roleplay) {
-                        eprintln!("set tray ai mode failed: {error}");
+                        warn!("set tray ai mode failed: {error}");
                     }
                     let _ = mode_default_item.set_checked(false);
                     let _ = mode_roleplay_item.set_checked(true);
                 }
                 "toggle-visibility" => {
                     if let Err(error) = toggle_pet_windows(app) {
-                        eprintln!("toggle tray visibility failed: {error}");
+                        warn!("toggle tray visibility failed: {error}");
                     }
                 }
                 "open-settings" => {
                     if let Err(error) = open_settings_window(app) {
-                        eprintln!("open settings failed: {error}");
+                        warn!("open settings failed: {error}");
                     }
                 }
                 "quit" => {
@@ -132,7 +133,7 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
 
 pub fn run() {
     std::panic::set_hook(Box::new(|info| {
-        eprintln!("panic hook: {info}");
+        error!("panic hook: {info}");
     }));
 
     let app = tauri::Builder::default()
@@ -142,10 +143,10 @@ pub fn run() {
             setup_tray(app)?;
             let app_handle = app.handle().clone();
             if let Err(error) = backend::ensure_backend_running(&app_handle) {
-                eprintln!("backend startup failed: {error}");
+                error!("backend startup failed: {error}");
             }
             if let Err(error) = crate::overlay::prepare_startup(&app_handle) {
-                eprintln!("overlay startup preparation failed: {error}");
+                error!("overlay startup preparation failed: {error}");
             }
             bootstrap_desktop_pet(&app_handle);
             bootstrap_overlay_deferred(app_handle);
@@ -161,12 +162,13 @@ pub fn run() {
             commands::menu::open_history_panel,
             commands::menu::hide_menu_window,
             commands::settings::open_settings_panel,
+            commands::settings::clear_local_data,
             commands::overlay::set_overlay_always_on_top,
             commands::avatar::hide_pet
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|error| {
-            eprintln!("error while running tauri application: {error}");
+            error!("error while running tauri application: {error}");
             std::process::exit(1);
         });
 

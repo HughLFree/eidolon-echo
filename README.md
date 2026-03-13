@@ -1,6 +1,6 @@
-# desktop-ai
+# Eidolon-Echo
 
-一个以 AI 对话为核心的桌宠项目。
+一个以 AI 对话、角色扮演与长期陪伴为核心的桌面应用。
 
 - 前端：Vite + React（由 Tauri 加载）
 - 桌面壳：Tauri + Rust
@@ -12,9 +12,14 @@
 
 - `apps/backend` 提供 HTTP API，可独立运行/替换
 - `apps/desktop/web` 只依赖 HTTP API
-- `apps/desktop/src-tauri` 只负责窗口管理与桌面能力
+- `apps/desktop/src-tauri` 只负责窗口管理、sidecar 生命周期与桌面能力
 
-注意：`ref/` 是参考代码目录，已加入 `.gitignore`，不属于主工程结构。
+平台状态：
+
+- 当前开发与日常验证环境为 macOS。
+- 项目结构本身按跨平台方向组织，但目前未对 Windows / Linux 做完整验证。
+- 如果你在非 macOS 环境使用，请默认按“实验状态”看待，并预期可能需要额外适配。
+
 
 开发手册见：[DEVELOPMENT.md](./DEVELOPMENT.md)。
 
@@ -34,6 +39,8 @@
 - 设置中心：
   - 支持 provider（当前主用 DeepSeek）与 profile（default/roleplay）配置。
   - 可配置温度、max_tokens、头像路径、提示词、context_limit。
+  - 设置页分为 `概览 / API 设置 / 默认模式 / 角色扮演 / 其他` 五个页面。
+  - `其他` 页提供本地数据清理入口。
   - 配置保存后写入数据库，后续请求按数据库配置生效。
 - 桌面端交互：
   - 托盘支持模式切换、设置中心、最小化/恢复、退出。
@@ -113,7 +120,7 @@
 
 ## 结构评估
 
-评估时间：当前版本（忽略 `ref/`）
+评估时间：当前版本
 
 ### 优点
 
@@ -163,15 +170,15 @@ xcode-select --install
 ### 2) 启动桌面端（开发）
 
 ```bash
-cd apps/desktop/web
-npm install
-cd ../src-tauri
+cd apps/desktop/src-tauri
 cargo tauri dev
 ```
 
 说明：
 
+- 首次运行前先在 `apps/desktop/web` 执行一次 `npm install`。
 - `cargo tauri dev` 会自动拉起后端 sidecar（默认 `127.0.0.1:3001`）。
+- 建议固定在 `apps/desktop/src-tauri` 目录执行 `cargo tauri dev`。
 - 托盘 `Quit` 或应用退出事件会尝试结束 sidecar 后端进程。
 - 开发模式下后端数据库路径为 `apps/backend/data/chat.db`。
 
@@ -181,7 +188,7 @@ cargo tauri dev
 
 - `base_url`
 - `model_name`
-- `api_key_ref`（这里直接填真实 API key 字符串）
+- `api_key`（这里直接填真实 API key 字符串，会明文存到本地数据库）
 - `temperature`、`max_tokens`（可选）
 
 说明：
@@ -196,7 +203,7 @@ cargo tauri dev
 仅在你需要单独调试后端时使用：
 
 ```bash
-cargo run -p desktop-ai-backend
+cargo run -p eidolon-echo-backend
 ```
 
 常用环境变量覆盖（其余配置不再走 ENV fallback）：
@@ -212,6 +219,54 @@ cargo run -p desktop-ai-backend
 - OpenAPI 源文件：`apps/backend/openapi/openapi.yaml`
 - 人类可读文档：`apps/backend/docs/http-api.md`
 
+## 卸载说明
+
+macOS 上完整卸载需要同时删除应用本体和本地数据目录。只删除 `.app` 不会自动清空聊天记录、provider 配置和本地数据库。
+
+推荐步骤：
+
+1. 先从托盘点击 `Quit` 退出应用。
+2. 如怀疑未退出干净，可在“活动监视器”里结束 `eidolon-echo-shell` 与 `eidolon-echo-backend`。
+3. 删除应用本体，例如 `/Applications/Eidolon-Echo.app`。
+4. 删除本地数据目录：
+   - `~/Library/Application Support/io.github.hughlfree.eidolonecho`
+   - 运行时代码会把后端数据库放到 `app_local_data_dir/backend/chat.db`
+5. 如需彻底清理，可再检查并删除：
+   - `~/Library/Caches/io.github.hughlfree.eidolonecho`
+   - `~/Library/Logs/io.github.hughlfree.eidolonecho`
+   - `~/Library/Preferences/io.github.hughlfree.eidolonecho.plist`
+
+终端示例：
+
+```bash
+pkill -f eidolon-echo-shell || true
+pkill -f eidolon-echo-backend || true
+
+rm -rf "/Applications/Eidolon-Echo.app"
+rm -rf "$HOME/Library/Application Support/io.github.hughlfree.eidolonecho"
+rm -rf "$HOME/Library/Caches/io.github.hughlfree.eidolonecho"
+rm -rf "$HOME/Library/Logs/io.github.hughlfree.eidolonecho"
+rm -f "$HOME/Library/Preferences/io.github.hughlfree.eidolonecho.plist"
+```
+
+说明：
+
+- 当前 `api_key` 以明文形式保存在本地数据库中，因此删除数据目录才算真正清除本地敏感配置。
+- 开发模式默认数据库路径仍是 `apps/backend/data/chat.db`，本地开发时如需彻底清理，也要手动删除该文件。
+- 应用内也提供了“清除本地数据”入口：设置中心 -> 其他 -> 本地数据。
+
+## 进程说明
+
+开发模式下，活动监视器中看到以下进程或连接通常是正常现象：
+
+- `eidolon-echo-shell`：桌面壳主进程。
+- `eidolon-echo-backend`：本地 Axum 后端 sidecar。
+- `127.0.0.1:1420`：Vite 开发服务器连接。多窗口场景下可能出现多条，因为每个 webview 都会连接本地 dev server。
+- `Eidolon-Echo ... Graphics and Media`：macOS WebView 渲染相关辅助进程。
+- `Eidolon-Echo ... Networking`：macOS WebView 网络相关辅助进程。
+
+正式打包后，前端不再依赖 `127.0.0.1:1420` 的 Vite 开发服务器。
+
 ## 关键行为说明（当前）
 
 - `main` 窗口：虚拟形象（拖拽、点按打开菜单）
@@ -225,18 +280,16 @@ cargo run -p desktop-ai-backend
 
 ## CORS 说明
 
-当前后端 CORS 为全开放：
+当前后端 CORS 策略分环境：
 
-- `allow_origin(Any)`
-- `allow_headers(Any)`
-- `allow_methods(Any)`
-
-适合本地开发和跨端调试。生产环境建议改成白名单来源与受限方法/请求头。
+- `debug`：全开放，便于本地开发和跨端调试。
+- `release`：仅允许 `http://tauri.localhost` 与 `tauri://localhost`。
+- `release`：仅允许 `GET/POST/PUT/DELETE/OPTIONS` 与 `Accept/Content-Type`。
 
 ## 常见问题
 
 - `401 Unauthorized` / `invalid api key`
-  - 到设置中心检查当前 mode 绑定的 provider，确认 `api_key_ref`、`base_url`、`model_name` 匹配且 key 有权限。
+  - 到设置中心检查当前 mode 绑定的 provider，确认 `api_key`、`base_url`、`model_name` 匹配且 key 有权限。
   - 可先访问 `http://127.0.0.1:3001/api/health`，检查 `ai_precheck.ready` 是否为 `true`。
 - `migration ... was previously applied but has been modified` / `... missing in the resolved migrations`
   - 说明本地旧库与当前迁移基线不一致。

@@ -10,11 +10,12 @@ use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position,
     Size, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
+use tracing::warn;
 
 const CHAT_GAP_PX: i32 = 2;
 const SETTINGS_LABEL: &str = "settings";
 const SETTINGS_URL: &str = "settings.html";
-const SETTINGS_TITLE: &str = "桌宠设置";
+const SETTINGS_TITLE: &str = "Eidolon-Echo Settings";
 const SETTINGS_WIDTH: f64 = 860.0;
 const SETTINGS_HEIGHT: f64 = 620.0;
 const SETTINGS_MIN_WIDTH: f64 = 720.0;
@@ -298,7 +299,7 @@ pub fn toggle_pet_windows(app: &AppHandle) -> Result<(), String> {
 
 pub fn bootstrap_desktop_pet(app: &AppHandle) {
     if let Err(error) = overlay::configure_runtime(app) {
-        eprintln!("overlay runtime configuration failed: {error}");
+        warn!("overlay runtime configuration failed: {error}");
     }
 
     if let Some(main) = app.get_webview_window("main") {

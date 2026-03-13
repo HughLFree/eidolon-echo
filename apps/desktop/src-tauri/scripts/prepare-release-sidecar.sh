@@ -24,11 +24,11 @@ echo "[build] web dist"
 (cd "${WORKSPACE_DIR}/apps/desktop/web" && npm run build)
 
 echo "[build] backend (${TARGET_TRIPLE})"
-(cd "${WORKSPACE_DIR}" && cargo build -p desktop-ai-backend --release --target "${TARGET_TRIPLE}")
+(cd "${WORKSPACE_DIR}" && cargo build -p eidolon-echo-backend --release --target "${TARGET_TRIPLE}")
 
-SOURCE_BIN="${WORKSPACE_DIR}/target/${TARGET_TRIPLE}/release/desktop-ai-backend${EXT}"
+SOURCE_BIN="${WORKSPACE_DIR}/target/${TARGET_TRIPLE}/release/eidolon-echo-backend${EXT}"
 if [[ ! -f "${SOURCE_BIN}" ]]; then
-  SOURCE_BIN="${WORKSPACE_DIR}/target/release/desktop-ai-backend${EXT}"
+  SOURCE_BIN="${WORKSPACE_DIR}/target/release/eidolon-echo-backend${EXT}"
 fi
 
 if [[ ! -f "${SOURCE_BIN}" ]]; then
@@ -38,7 +38,7 @@ fi
 
 BIN_DIR="${TAURI_DIR}/binaries"
 mkdir -p "${BIN_DIR}"
-DEST_BIN="${BIN_DIR}/desktop-ai-backend-${TARGET_TRIPLE}${EXT}"
+DEST_BIN="${BIN_DIR}/eidolon-echo-backend-${TARGET_TRIPLE}${EXT}"
 cp "${SOURCE_BIN}" "${DEST_BIN}"
 
 if [[ "${EXT}" != ".exe" ]]; then

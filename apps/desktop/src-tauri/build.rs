@@ -25,7 +25,7 @@ fn ensure_sidecar_file() {
     } else {
         ""
     };
-    let sidecar_name = format!("desktop-ai-backend-{target}{ext}");
+    let sidecar_name = format!("eidolon-echo-backend-{target}{ext}");
     let sidecar_path = manifest_dir.join("binaries").join(sidecar_name);
     if sidecar_path.is_file() {
         return;
@@ -50,7 +50,7 @@ fn ensure_sidecar_file() {
         let _ = fs::write(&sidecar_path, []);
     } else {
         let placeholder =
-            b"#!/bin/sh\necho \"desktop-ai-backend sidecar is not prepared\" >&2\nexit 1\n";
+            b"#!/bin/sh\necho \"eidolon-echo-backend sidecar is not prepared\" >&2\nexit 1\n";
         let _ = fs::write(&sidecar_path, placeholder);
         make_executable_if_needed(&sidecar_path);
     }
@@ -58,7 +58,7 @@ fn ensure_sidecar_file() {
 
 fn backend_binary_candidates(manifest_dir: &Path, target: &str, ext: &str) -> Vec<PathBuf> {
     let workspace_root = manifest_dir.join("../../..");
-    let binary_name = format!("desktop-ai-backend{ext}");
+    let binary_name = format!("eidolon-echo-backend{ext}");
     vec![
         workspace_root
             .join("target")
