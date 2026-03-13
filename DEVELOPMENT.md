@@ -28,8 +28,8 @@
   - `default`：消息仅内存缓存，不落库消息表。
   - `roleplay`：消息落库，并支持冷启动与下拉分页回填。
 - 当前会话解析：
-  - 后端按 `mode -> profile -> latest conversation(updated_at)` 解析当前会话。
-  - 当前尚未实现显式 `active_conversation_id` 字段。
+  - 后端按 `mode -> profile.active_conversation_id -> conversation` 解析当前会话。
+  - 启动阶段会做一次 bootstrap，确保每个 mode 至少有一个 profile、一个 conversation，且 active 指针已设置。
 - 上下文缓存：
   - `ContextManager` 按 `conversation_id` 作为缓存键，避免多会话串上下文。
   - API 拼接上下文优先读缓存，不足再从 DB 回填。
@@ -123,6 +123,5 @@ cd apps/desktop/web && npm run build
 
 ## 7. 近期建议（可选）
 
-- 为 profile 增加显式 `active_conversation_id`，替代“按 updated_at 取最新”。
 - 将窗口 label 常量集中管理，降低多处硬编码风险。
 - 增加最小回归脚本（后端健康检查 + 前端构建 + 基本路由 smoke test）。

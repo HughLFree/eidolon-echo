@@ -95,7 +95,7 @@ pub async fn create_profile(pool: &SqlitePool, id: &str, payload: &ProfileUpsert
     .execute(pool)
     .await?;
 
-    super::conversations::create_initial_conversation_for_profile(pool, id, payload.mode, &payload.name)
+    super::conversations::ensure_profile_active_conversation(pool, id, payload.mode, &payload.name)
         .await?;
 
     get_profile(pool, id)

@@ -42,6 +42,7 @@ async fn main() -> Result<()> {
 
     let cfg = AppConfig::load()?;
     let pool = db::init_pool(&cfg.database.path).await?;
+    db::bootstrap_mode_profiles_and_conversations(&pool).await?;
 
     let provider_cfg = cfg
         .ai

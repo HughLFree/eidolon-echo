@@ -12,7 +12,7 @@ mod pool;
 mod profiles;
 mod providers;
 
-pub use conversations::resolve_mode_profile_and_conversation;
+pub use conversations::{bootstrap_mode_profiles_and_conversations, resolve_mode_profile_and_conversation};
 pub use messages::{append_message_pair, list_messages, list_messages_before_id};
 pub use pool::init_pool;
 pub use profiles::{

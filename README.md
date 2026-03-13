@@ -24,7 +24,7 @@
   - `default`：轻量对话，消息只保存在内存缓存，不写数据库消息表。
   - `roleplay`：带记忆对话，消息会写入数据库，并在冷启动/翻页时回填缓存。
 - 会话与历史：
-  - 按 `mode -> profile -> latest conversation(updated_at)` 解析当前会话。
+  - 按 `mode -> profile.active_conversation_id -> conversation` 解析当前会话。
   - 历史接口：`GET /api/messages?mode=...&limit=...&before_id=...`。
   - 历史列表最新消息在上，支持滚动分页加载更早消息。
 - 上下文拼接：
@@ -237,7 +237,7 @@ VITE_BACKEND_BASE_URL=http://127.0.0.1:3001
 - `bubble` 窗口：回复气泡展示
 - `menu` 窗口：菜单和历史
 - `settings` 窗口：设置中心（托盘菜单打开）
-- 当前会话由后端数据库按 `mode -> profile -> latest conversation(updated_at)` 解析
+- 当前会话由后端数据库按 `mode -> profile.active_conversation_id -> conversation` 解析
 - 前端/Tauri 不再保存 active conversation id 作为真相源
 - 历史消息接口为 `GET /api/messages?mode=...&limit=...&before_id=...`
 
