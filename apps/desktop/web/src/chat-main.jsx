@@ -18,17 +18,22 @@ function ChatApp() {
     let unlistenMode;
 
     const bootstrap = async () => {
+      let modeForHealth = null;
       try {
         const current = await invoke("get_ai_mode");
         if (typeof current?.mode === "string") {
           setAiMode(current.mode);
+          modeForHealth = current.mode;
         }
       } catch {
         // no-op
       }
 
       try {
-        const health = await fetchBackendHealth(BACKEND_BASE_URL);
+        await ensureBackendReady();
+        const health = await fetchBackendHealth(BACKEND_BASE_URL, {
+          mode: modeForHealth
+        });
         if (health?.ai_precheck?.ready === false) {
           const reason = (health.ai_precheck.message || "").trim();
           const precheckTip = reason || "模型连通性预检查未通过，请先在设置里确认 API 配置。";
@@ -63,6 +68,7 @@ function ChatApp() {
   }
 
   async function sendMessageStream(message) {
+    await ensureBackendReady();
     const token = ++streamTokenRef.current;
     const data = await sendChatMessageStream(BACKEND_BASE_URL, {
       message,
@@ -128,6 +134,16 @@ function toUserFriendlyErrorMessage(error) {
   const lower = raw.toLowerCase();
 
   if (
+    lower.includes("backend startup failed")
+    || lower.includes("unable to locate backend sidecar binary")
+    || lower.includes("failed to spawn backend process")
+    || lower.includes("timed out")
+    || lower.includes("exited during startup")
+  ) {
+    return "本地后端启动失败。请完全退出应用后重试；若仍失败，请在终端先运行后端查看具体错误。";
+  }
+
+  if (
     lower.includes("401")
     || lower.includes("403")
     || lower.includes("unauthorized")
@@ -144,15 +160,25 @@ function toUserFriendlyErrorMessage(error) {
 
   if (
     lower.includes("failed to fetch")
+    || lower.includes("load failed")
     || lower.includes("networkerror")
     || lower.includes("connection refused")
     || lower.includes("connect")
     || lower.includes("timed out")
   ) {
-    return "无法连接到后端服务，请确认桌宠已正常启动。";
+    return "无法连接到后端服务。请先确认应用已正常启动；如果是首次使用，请在“设置 -> API 设置”完成模型配置。";
   }
 
   return raw ? `请求失败：${raw}` : "请求失败，请稍后重试。";
+}
+
+async function ensureBackendReady() {
+  try {
+    await invoke("ensure_backend_ready");
+  } catch (error) {
+    const message = String(error?.message || error || "").trim();
+    throw new Error(message || "backend startup failed");
+  }
 }
 
 function extractBackendFailureMessage(reply) {

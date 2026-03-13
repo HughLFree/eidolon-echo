@@ -1,12 +1,13 @@
 //! Chat-related commands: bubble updates.
 
+use super::super::window_labels::BUBBLE_LABEL;
 use super::super::window_manager::sync_bubble_position;
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
 pub fn set_bubble_text(app: AppHandle, text: String) -> Result<(), String> {
     let bubble = app
-        .get_webview_window("bubble")
+        .get_webview_window(BUBBLE_LABEL)
         .ok_or_else(|| "bubble window not found".to_string())?;
 
     let _ = sync_bubble_position(&app);
@@ -22,7 +23,7 @@ pub fn set_bubble_text(app: AppHandle, text: String) -> Result<(), String> {
 #[tauri::command]
 pub fn set_bubble_interactive(app: AppHandle, interactive: bool) -> Result<(), String> {
     let bubble = app
-        .get_webview_window("bubble")
+        .get_webview_window(BUBBLE_LABEL)
         .ok_or_else(|| "bubble window not found".to_string())?;
     bubble
         .set_ignore_cursor_events(!interactive)

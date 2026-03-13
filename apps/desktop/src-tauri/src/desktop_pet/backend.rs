@@ -7,7 +7,7 @@ use std::{
     sync::Mutex,
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, Runtime};
 use tracing::info;
 
 const BACKEND_BINARY_BASENAME: &str = "eidolon-echo-backend";
@@ -27,7 +27,7 @@ pub struct ClearLocalDataResult {
     pub backend_restarted: bool,
 }
 
-pub fn ensure_backend_running(app: &AppHandle) -> Result<(), String> {
+pub fn ensure_backend_running<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     if is_backend_ready() {
         return Ok(());
     }
@@ -67,7 +67,7 @@ pub fn ensure_backend_running(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub fn stop_backend_process(app: &AppHandle) {
+pub fn stop_backend_process<R: Runtime>(app: &AppHandle<R>) {
     let state: tauri::State<BackendProcessState> = app.state();
     let mut child = {
         let mut guard = state.child.lock().unwrap_or_else(|e| e.into_inner());
@@ -79,8 +79,18 @@ pub fn stop_backend_process(app: &AppHandle) {
     }
 }
 
-pub fn clear_backend_local_data(app: &AppHandle) -> Result<ClearLocalDataResult, String> {
+pub fn clear_backend_local_data<R: Runtime>(app: &AppHandle<R>) -> Result<ClearLocalDataResult, String> {
+    if is_backend_ready() && !has_managed_backend_child(app) {
+        return Err(
+            "检测到独立启动的后端进程。请先手动退出它，再清除本地数据。".to_string(),
+        );
+    }
+
     stop_backend_process(app);
+
+    if is_backend_ready() {
+        return Err("后端进程仍在运行，无法安全清除本地数据。".to_string());
+    }
 
     let data_dir = resolve_backend_data_dir(app)?;
     reset_directory(&data_dir)?;
@@ -124,7 +134,7 @@ fn wait_backend_ready(child: &mut Child) -> Result<(), String> {
     }
 }
 
-fn build_backend_command(app: &AppHandle) -> Result<Command, String> {
+fn build_backend_command<R: Runtime>(app: &AppHandle<R>) -> Result<Command, String> {
     if let Ok(raw) = std::env::var("DESKTOP_AI_BACKEND_BIN") {
         let path = raw.trim();
         if !path.is_empty() {
@@ -161,6 +171,12 @@ fn terminate_child_process(child: &mut Child) {
     let _ = child.wait();
 }
 
+fn has_managed_backend_child<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let state: tauri::State<BackendProcessState> = app.state();
+    let guard = state.child.lock().unwrap_or_else(|e| e.into_inner());
+    guard.is_some()
+}
+
 fn reset_directory(path: &Path) -> Result<(), String> {
     if path.exists() {
         std::fs::remove_dir_all(path)
@@ -187,12 +203,16 @@ fn build_debug_backend_binary(workspace_root: &std::path::Path) -> Result<(), St
     }
 }
 
-fn configure_backend_environment(app: &AppHandle, command: &mut Command) -> Result<(), String> {
+fn configure_backend_environment<R: Runtime>(
+    app: &AppHandle<R>,
+    command: &mut Command,
+) -> Result<(), String> {
     let backend_dir = resolve_backend_data_dir(app)?;
     std::fs::create_dir_all(&backend_dir)
         .map_err(|error| format!("failed to create backend data dir: {error}"))?;
 
     command.env("DATABASE_PATH", backend_dir.join("chat.db"));
+    command.env("SERVER_PORT", backend_port().to_string());
 
     if let Some(config_path) = resolve_backend_resource_path(app, "config/default.toml") {
         command.env("APP_CONFIG", config_path);
@@ -210,7 +230,15 @@ fn configure_backend_environment(app: &AppHandle, command: &mut Command) -> Resu
     Ok(())
 }
 
-fn resolve_backend_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+fn resolve_backend_data_dir<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
+    #[cfg(test)]
+    if let Ok(path) = std::env::var("EIDOLON_ECHO_TEST_DATA_DIR") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
     // Development should use workspace DB for predictable migration/debug behavior.
     if cfg!(debug_assertions) {
         if let Some(workspace_root) = workspace_root_dir() {
@@ -225,7 +253,7 @@ fn resolve_backend_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(local_data_dir.join("backend"))
 }
 
-fn resolve_backend_binary_path(app: &AppHandle) -> Option<PathBuf> {
+fn resolve_backend_binary_path<R: Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     let file_name = backend_binary_filename();
     let mut candidates = Vec::new();
 
@@ -257,7 +285,7 @@ fn resolve_backend_binary_path(app: &AppHandle) -> Option<PathBuf> {
     candidates.into_iter().find(|path| path.is_file())
 }
 
-fn resolve_backend_resource_path(app: &AppHandle, relative_path: &str) -> Option<PathBuf> {
+fn resolve_backend_resource_path<R: Runtime>(app: &AppHandle<R>, relative_path: &str) -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
     if let Ok(resource_dir) = app.path().resource_dir() {
@@ -288,15 +316,47 @@ fn backend_binary_filename() -> String {
 }
 
 fn is_backend_ready() -> bool {
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), BACKEND_PORT);
+    #[cfg(test)]
+    if let Ok(path) = std::env::var("EIDOLON_ECHO_TEST_READY_FILE") {
+        let trimmed = path.trim();
+        if !trimmed.is_empty() {
+            return Path::new(trimmed).exists();
+        }
+    }
+
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), backend_port());
     TcpStream::connect_timeout(&addr, Duration::from_millis(200)).is_ok()
+}
+
+fn backend_port() -> u16 {
+    #[cfg(test)]
+    if let Ok(raw) = std::env::var("EIDOLON_ECHO_TEST_BACKEND_PORT") {
+        if let Ok(port) = raw.parse::<u16>() {
+            return port;
+        }
+    }
+
+    BACKEND_PORT
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{reset_directory, terminate_child_process};
-    use std::process::{Child, Command, Stdio};
-    use std::time::{Duration, Instant};
+    use super::{
+        clear_backend_local_data, ensure_backend_running, reset_directory, stop_backend_process,
+        terminate_child_process, BackendProcessState,
+    };
+    use std::{
+        fs,
+        io::Write,
+        path::{Path, PathBuf},
+        process::{Child, Command, Stdio},
+        sync::{Mutex, OnceLock},
+        time::{Duration, Instant},
+    };
+    use tauri::Manager;
+    use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn spawn_long_running_child() -> Child {
         if cfg!(target_os = "windows") {
@@ -314,6 +374,86 @@ mod tests {
                 .spawn()
                 .expect("spawn unix child")
         }
+    }
+
+    fn test_guard() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        static COUNTER: OnceLock<std::sync::atomic::AtomicUsize> = OnceLock::new();
+        let counter = COUNTER.get_or_init(|| std::sync::atomic::AtomicUsize::new(0));
+        let id = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::env::temp_dir().join(format!("{prefix}-{}-{id}", std::process::id()))
+    }
+
+    fn write_test_backend_script(dir: &Path) -> PathBuf {
+        #[cfg(target_os = "windows")]
+        let script_path = dir.join("test-backend.cmd");
+        #[cfg(not(target_os = "windows"))]
+        let script_path = dir.join("test-backend.py");
+
+        #[cfg(target_os = "windows")]
+        let script = r#"@echo off
+python -c "import os, time; marker=os.environ.get('EIDOLON_ECHO_TEST_LAUNCH_MARKER'); ready=os.environ.get('EIDOLON_ECHO_TEST_READY_FILE'); \
+f=None; \
+if marker: f=open(marker,'a',encoding='utf-8'); f.write('started\n'); f.flush(); \
+if ready: open(ready,'w',encoding='utf-8').write('ready'); \
+try: \
+    while True: time.sleep(1) \
+except KeyboardInterrupt: pass"
+"#;
+
+        #[cfg(not(target_os = "windows"))]
+        let script = r#"#!/usr/bin/env python3
+import os
+import signal
+import sys
+import time
+
+marker = os.environ.get("EIDOLON_ECHO_TEST_LAUNCH_MARKER")
+if marker:
+    with open(marker, "a", encoding="utf-8") as fh:
+        fh.write("started\n")
+
+ready_file = os.environ.get("EIDOLON_ECHO_TEST_READY_FILE")
+if ready_file:
+    with open(ready_file, "w", encoding="utf-8") as fh:
+        fh.write("ready\n")
+
+def shutdown(_signum, _frame):
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, shutdown)
+signal.signal(signal.SIGINT, shutdown)
+
+while True:
+    time.sleep(1)
+"#;
+
+        fs::create_dir_all(dir).expect("create helper dir");
+        let mut file = fs::File::create(&script_path).expect("create helper script");
+        file.write_all(script.as_bytes()).expect("write helper script");
+        drop(file);
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&script_path)
+                .expect("stat helper script")
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&script_path, permissions).expect("chmod helper script");
+        }
+
+        script_path
+    }
+
+    fn mock_shell_app() -> tauri::App<MockRuntime> {
+        mock_builder()
+            .manage(BackendProcessState::default())
+            .build(mock_context(noop_assets()))
+            .expect("build mock tauri app")
     }
 
     #[test]
@@ -354,5 +494,133 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn ensure_backend_running_spawns_and_tracks_ready_backend() {
+        let _guard = test_guard();
+        let port = 33101u16;
+        let helper_dir = unique_temp_dir("eidolon-echo-backend-helper");
+        let data_dir = unique_temp_dir("eidolon-echo-backend-data");
+        let marker = helper_dir.join("launches.log");
+        let ready = helper_dir.join("ready.flag");
+        let script_path = write_test_backend_script(&helper_dir);
+
+        std::env::set_var("DESKTOP_AI_BACKEND_BIN", &script_path);
+        std::env::set_var("EIDOLON_ECHO_TEST_BACKEND_PORT", port.to_string());
+        std::env::set_var("EIDOLON_ECHO_TEST_DATA_DIR", &data_dir);
+        std::env::set_var("EIDOLON_ECHO_TEST_LAUNCH_MARKER", &marker);
+        std::env::set_var("EIDOLON_ECHO_TEST_READY_FILE", &ready);
+
+        let app = mock_shell_app();
+        let result = ensure_backend_running(app.handle());
+        if result.is_ok() {
+            let state: tauri::State<'_, BackendProcessState> = app.state();
+            let guard = state.child.lock().unwrap_or_else(|e| e.into_inner());
+            assert!(guard.is_some(), "backend child should be tracked after startup");
+            drop(guard);
+            assert!(marker.exists(), "test backend helper should have started");
+        }
+
+        stop_backend_process(app.handle());
+        std::env::remove_var("DESKTOP_AI_BACKEND_BIN");
+        std::env::remove_var("EIDOLON_ECHO_TEST_BACKEND_PORT");
+        std::env::remove_var("EIDOLON_ECHO_TEST_DATA_DIR");
+        std::env::remove_var("EIDOLON_ECHO_TEST_LAUNCH_MARKER");
+        std::env::remove_var("EIDOLON_ECHO_TEST_READY_FILE");
+        let _ = fs::remove_dir_all(&helper_dir);
+        let _ = fs::remove_dir_all(&data_dir);
+
+        result.expect("ensure_backend_running should start helper backend");
+    }
+
+    #[test]
+    fn clear_backend_local_data_restarts_backend_after_reset() {
+        let _guard = test_guard();
+        let port = 33102u16;
+        let helper_dir = unique_temp_dir("eidolon-echo-clear-helper");
+        let data_dir = unique_temp_dir("eidolon-echo-clear-data");
+        let marker = helper_dir.join("launches.log");
+        let ready = helper_dir.join("ready.flag");
+        let script_path = write_test_backend_script(&helper_dir);
+
+        fs::create_dir_all(&data_dir).expect("create data dir");
+        fs::write(data_dir.join("stale.txt"), "stale").expect("seed data dir");
+
+        std::env::set_var("DESKTOP_AI_BACKEND_BIN", &script_path);
+        std::env::set_var("EIDOLON_ECHO_TEST_BACKEND_PORT", port.to_string());
+        std::env::set_var("EIDOLON_ECHO_TEST_DATA_DIR", &data_dir);
+        std::env::set_var("EIDOLON_ECHO_TEST_LAUNCH_MARKER", &marker);
+        std::env::set_var("EIDOLON_ECHO_TEST_READY_FILE", &ready);
+
+        let app = mock_shell_app();
+        let result = clear_backend_local_data(app.handle());
+
+        if let Ok(result) = &result {
+            assert_eq!(PathBuf::from(&result.data_dir), data_dir);
+            assert!(result.backend_restarted);
+            assert!(!data_dir.join("stale.txt").exists(), "data reset should remove stale files");
+            let launches = fs::read_to_string(&marker).expect("read launch marker");
+            assert!(
+                launches.lines().count() >= 1,
+                "clearing local data should relaunch helper backend"
+            );
+        }
+
+        stop_backend_process(app.handle());
+        std::env::remove_var("DESKTOP_AI_BACKEND_BIN");
+        std::env::remove_var("EIDOLON_ECHO_TEST_BACKEND_PORT");
+        std::env::remove_var("EIDOLON_ECHO_TEST_DATA_DIR");
+        std::env::remove_var("EIDOLON_ECHO_TEST_LAUNCH_MARKER");
+        std::env::remove_var("EIDOLON_ECHO_TEST_READY_FILE");
+        let _ = fs::remove_dir_all(&helper_dir);
+        let _ = fs::remove_dir_all(&data_dir);
+
+        result.expect("clear_backend_local_data should reset dir and restart backend");
+    }
+
+    #[test]
+    fn clear_backend_local_data_rejects_unmanaged_running_backend() {
+        let _guard = test_guard();
+        let helper_dir = unique_temp_dir("eidolon-echo-unmanaged-helper");
+        let data_dir = unique_temp_dir("eidolon-echo-unmanaged-data");
+        let marker = helper_dir.join("launches.log");
+        let ready = helper_dir.join("ready.flag");
+        let script_path = write_test_backend_script(&helper_dir);
+
+        std::env::set_var("DESKTOP_AI_BACKEND_BIN", &script_path);
+        std::env::set_var("EIDOLON_ECHO_TEST_DATA_DIR", &data_dir);
+        std::env::set_var("EIDOLON_ECHO_TEST_LAUNCH_MARKER", &marker);
+        std::env::set_var("EIDOLON_ECHO_TEST_READY_FILE", &ready);
+
+        let mut unmanaged = Command::new(&script_path)
+            .env("EIDOLON_ECHO_TEST_LAUNCH_MARKER", &marker)
+            .env("EIDOLON_ECHO_TEST_READY_FILE", &ready)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn unmanaged backend helper");
+
+        let wait_deadline = Instant::now() + Duration::from_secs(2);
+        while !ready.exists() && Instant::now() < wait_deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        let app = mock_shell_app();
+        let result = clear_backend_local_data(app.handle());
+
+        terminate_child_process(&mut unmanaged);
+        std::env::remove_var("DESKTOP_AI_BACKEND_BIN");
+        std::env::remove_var("EIDOLON_ECHO_TEST_DATA_DIR");
+        std::env::remove_var("EIDOLON_ECHO_TEST_LAUNCH_MARKER");
+        std::env::remove_var("EIDOLON_ECHO_TEST_READY_FILE");
+        let _ = fs::remove_dir_all(&helper_dir);
+        let _ = fs::remove_dir_all(&data_dir);
+
+        let error = result.expect_err("unmanaged backend should block local data reset");
+        assert!(
+            error.contains("独立启动的后端进程"),
+            "unexpected error: {error}"
+        );
     }
 }

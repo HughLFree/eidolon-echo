@@ -1,6 +1,7 @@
 //! Menu-related commands: show/hide menu panel, keepalive and history mode transitions.
 
 use super::super::state::{AnchorRect, MenuMode, OverlayState};
+use super::super::window_labels::MENU_LABEL;
 use super::super::window_manager::sync_menu_position;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -12,7 +13,7 @@ pub fn toggle_avatar_menu(
     anchor: AnchorRect,
 ) -> Result<(), String> {
     let menu = app
-        .get_webview_window("menu")
+        .get_webview_window(MENU_LABEL)
         .ok_or_else(|| "menu window not found".to_string())?;
 
     let should_show = {
@@ -54,7 +55,7 @@ pub fn menu_keep_alive(app: AppHandle, state: State<Mutex<OverlayState>>) -> Res
     }
 
     let menu = app
-        .get_webview_window("menu")
+        .get_webview_window(MENU_LABEL)
         .ok_or_else(|| "menu window not found".to_string())?;
     menu.emit("menu:keepalive", true).map_err(|e| e.to_string())
 }
@@ -62,7 +63,7 @@ pub fn menu_keep_alive(app: AppHandle, state: State<Mutex<OverlayState>>) -> Res
 #[tauri::command]
 pub fn open_history_panel(app: AppHandle, state: State<Mutex<OverlayState>>) -> Result<(), String> {
     let menu = app
-        .get_webview_window("menu")
+        .get_webview_window(MENU_LABEL)
         .ok_or_else(|| "menu window not found".to_string())?;
 
     {
@@ -82,7 +83,7 @@ pub fn open_history_panel(app: AppHandle, state: State<Mutex<OverlayState>>) -> 
 #[tauri::command]
 pub fn hide_menu_window(app: AppHandle, state: State<Mutex<OverlayState>>) -> Result<(), String> {
     let menu = app
-        .get_webview_window("menu")
+        .get_webview_window(MENU_LABEL)
         .ok_or_else(|| "menu window not found".to_string())?;
 
     {

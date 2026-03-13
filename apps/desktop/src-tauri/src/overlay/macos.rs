@@ -1,5 +1,9 @@
 //! macOS floating-window implementation backed by NSPanel for Space/fullscreen support.
 
+use crate::desktop_pet::window_labels::{
+    BUBBLE_LABEL, CHAT_LABEL, CHILD_WINDOW_LABELS, MAIN_LABEL, MENU_LABEL,
+    STARTUP_HIDDEN_WINDOW_LABELS, OVERLAY_WINDOW_LABELS,
+};
 use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::mpsc,
@@ -21,9 +25,6 @@ tauri_panel! {
     })
 }
 
-const PANEL_WINDOW_LABELS: &[&str] = &["main", "chat", "bubble", "menu"];
-const CHILD_WINDOW_LABELS: &[&str] = &["chat"];
-
 fn configure_panel(window: &WebviewWindow, initial_level: PanelLevel) -> Result<(), String> {
     let label = window.label().to_string();
     let panel = window
@@ -37,7 +38,7 @@ fn configure_panel(window: &WebviewWindow, initial_level: PanelLevel) -> Result<
             .into(),
     );
     panel.set_hides_on_deactivate(false);
-    if label != "chat" {
+    if label != CHAT_LABEL {
         panel.set_style_mask(StyleMask::empty().nonactivating_panel().resizable().into());
     } else {
         panel.set_becomes_key_only_if_needed(false);
@@ -52,7 +53,7 @@ fn configure_panel(window: &WebviewWindow, initial_level: PanelLevel) -> Result<
 }
 
 fn apply_panel_level(app: &AppHandle, level: PanelLevel) -> Result<(), String> {
-    for label in PANEL_WINDOW_LABELS {
+    for label in OVERLAY_WINDOW_LABELS {
         let panel = app
             .get_webview_panel(label)
             .map_err(|_| format!("panel '{label}' not found"))?;
@@ -62,7 +63,7 @@ fn apply_panel_level(app: &AppHandle, level: PanelLevel) -> Result<(), String> {
 }
 
 fn configure_all_panels(app: &AppHandle) -> Result<(), String> {
-    for label in PANEL_WINDOW_LABELS {
+    for label in OVERLAY_WINDOW_LABELS {
         let window: WebviewWindow = app
             .get_webview_window(label)
             .ok_or_else(|| format!("window '{label}' not found"))?;
@@ -74,8 +75,8 @@ fn configure_all_panels(app: &AppHandle) -> Result<(), String> {
 
 fn attach_child_panels(app: &AppHandle) -> Result<(), String> {
     let main_panel = app
-        .get_webview_panel("main")
-        .map_err(|_| "panel 'main' not found".to_string())?;
+        .get_webview_panel(MAIN_LABEL)
+        .map_err(|_| format!("panel '{MAIN_LABEL}' not found"))?;
 
     for label in CHILD_WINDOW_LABELS {
         let child_panel = app
@@ -104,17 +105,17 @@ fn apply_visibility_inner(
     show_menu: bool,
 ) -> Result<(), String> {
     let main_panel = app
-        .get_webview_panel("main")
-        .map_err(|_| "panel 'main' not found".to_string())?;
+        .get_webview_panel(MAIN_LABEL)
+        .map_err(|_| format!("panel '{MAIN_LABEL}' not found"))?;
     let chat_panel = app
-        .get_webview_panel("chat")
-        .map_err(|_| "panel 'chat' not found".to_string())?;
+        .get_webview_panel(CHAT_LABEL)
+        .map_err(|_| format!("panel '{CHAT_LABEL}' not found"))?;
     let bubble_panel = app
-        .get_webview_panel("bubble")
-        .map_err(|_| "panel 'bubble' not found".to_string())?;
+        .get_webview_panel(BUBBLE_LABEL)
+        .map_err(|_| format!("panel '{BUBBLE_LABEL}' not found"))?;
     let menu_panel = app
-        .get_webview_panel("menu")
-        .map_err(|_| "panel 'menu' not found".to_string())?;
+        .get_webview_panel(MENU_LABEL)
+        .map_err(|_| format!("panel '{MENU_LABEL}' not found"))?;
 
     if show_main {
         main_panel.show_and_make_key();
@@ -187,7 +188,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn prepare_startup(app: &AppHandle) -> Result<(), String> {
-    for label in ["main", "chat", "bubble"] {
+    for label in STARTUP_HIDDEN_WINDOW_LABELS {
         if let Some(window) = app.get_webview_window(label) {
             window.hide().map_err(|e| e.to_string())?;
         }
@@ -199,16 +200,16 @@ pub fn configure_runtime(app: &AppHandle) -> Result<(), String> {
     app.set_activation_policy(tauri::ActivationPolicy::Accessory)
         .map_err(|e| e.to_string())?;
 
-    if let Some(chat) = app.get_webview_window("chat") {
+    if let Some(chat) = app.get_webview_window(CHAT_LABEL) {
         chat.set_ignore_cursor_events(false)
             .map_err(|e| e.to_string())?;
     }
-    if let Some(bubble) = app.get_webview_window("bubble") {
+    if let Some(bubble) = app.get_webview_window(BUBBLE_LABEL) {
         bubble
             .set_ignore_cursor_events(true)
             .map_err(|e| e.to_string())?;
     }
-    if let Some(menu) = app.get_webview_window("menu") {
+    if let Some(menu) = app.get_webview_window(MENU_LABEL) {
         menu.set_ignore_cursor_events(false)
             .map_err(|e| e.to_string())?;
         menu.hide().map_err(|e| e.to_string())?;

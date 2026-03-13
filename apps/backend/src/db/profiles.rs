@@ -162,7 +162,7 @@ pub async fn delete_profile(pool: &SqlitePool, id: &str) -> Result<bool> {
     Ok(result.rows_affected() > 0)
 }
 
-const DEFAULT_MODE_SYSTEM_PROMPT: &str = "你是一个桌宠 AI 助手。\n\n要求：\n- 回答简洁、明确、可执行。\n- 优先使用中文回复。\n- 不要编造事实；不确定时明确说明不确定。";
+const DEFAULT_MODE_SYSTEM_PROMPT: &str = "你是一个 AI 助手。\n\n要求：\n- 回答简洁、明确、可执行。\n- 优先使用中文回复。\n- 不要编造事实；不确定时明确说明不确定。";
 
 pub(crate) async fn ensure_mode_profile(
     pool: &SqlitePool,

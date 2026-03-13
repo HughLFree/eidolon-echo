@@ -162,6 +162,8 @@ fn build_cors_layer() -> CorsLayer {
             .allow_origin([
                 HeaderValue::from_static("http://tauri.localhost"),
                 HeaderValue::from_static("tauri://localhost"),
+                HeaderValue::from_static("http://127.0.0.1:1420"),
+                HeaderValue::from_static("http://localhost:1420"),
             ])
             .allow_headers([ACCEPT, CONTENT_TYPE])
             .allow_methods([
@@ -174,7 +176,7 @@ fn build_cors_layer() -> CorsLayer {
     }
 }
 
-async fn run_startup_ai_precheck(
+pub(crate) async fn run_startup_ai_precheck(
     provider: &str,
     base_url: &str,
     api_key: &str,
@@ -246,7 +248,7 @@ async fn run_startup_ai_precheck(
     }
 }
 
-fn compact_for_message(raw: &str) -> String {
+pub(crate) fn compact_for_message(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.len() <= 280 {
         return trimmed.to_string();
@@ -254,7 +256,7 @@ fn compact_for_message(raw: &str) -> String {
     format!("{}...", &trimmed[..280])
 }
 
-fn map_startup_precheck_failure(status: HttpStatusCode, body: &str) -> String {
+pub(crate) fn map_startup_precheck_failure(status: HttpStatusCode, body: &str) -> String {
     if status == HttpStatusCode::UNAUTHORIZED || status == HttpStatusCode::FORBIDDEN {
         return "鉴权失败：API key 无效或无权限，请检查设置中的 api_key / base_url / model_name。"
             .to_string();

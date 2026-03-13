@@ -61,6 +61,18 @@ cargo test -p eidolon-echo-backend -p eidolon-echo-shell
 cd apps/desktop/web && npm run build
 ```
 
+## 3.4 正式打包
+
+```bash
+cd apps/desktop/src-tauri
+cargo tauri build
+```
+
+常见产物位置：
+
+- `.app`：`target/release/bundle/macos/`
+- `.dmg`：`target/release/bundle/dmg/`
+
 ## 4. 常见开发任务
 
 ## 4.1 新增后端 API（推荐步骤）
@@ -137,7 +149,8 @@ cd apps/desktop/web && npm run build
   - 看 `desktop_pet/window_manager.rs` 是否触发了对应 show/sync。
   - 看 `overlay/macos.rs` 日志与面板状态。
 
-## 7. 近期建议（可选）
+## 7. 当前后续重点（可选）
 
-- 将窗口 label 常量集中管理，降低多处硬编码风险。
-- 增加最小回归脚本（后端健康检查 + 前端构建 + 基本路由 smoke test）。
+- 做一次正式打包后的完整人工回归：安装、配置 key、default、roleplay、退出、清数据、卸载。
+- 如果准备分发给更多用户，优先补 GitHub Release 流程和 Homebrew tap 自动化。
+- `overlay/macos.rs` 仍然是桌面层最复杂的部分，后续可继续拆分职责。

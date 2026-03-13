@@ -13,7 +13,7 @@ function App() {
   const avatarRef = useRef(null);
   const dragRef = useRef({ pointerDown: false, dragStarted: false, startX: 0, startY: 0 });
   const keepAliveRef = useRef(0);
-  const [avatarPng, setAvatarPng] = useState("/assets/pet/ava.png");
+  const [avatarPng, setAvatarPng] = useState("/assets/pet/default-avatar.png");
   const [aiMode, setAiMode] = useState("default");
 
   useEffect(() => {
@@ -148,7 +148,7 @@ function App() {
           id="avatar"
           className="avatar"
           type="button"
-          aria-label="桌宠形象"
+          aria-label="伙伴形象"
           onClick={onAvatarClick}
           onDragStart={(e) => e.preventDefault()}
           onMouseEnter={keepMenuAlive}
@@ -158,7 +158,7 @@ function App() {
           onPointerUp={onPointerEnd}
           onPointerCancel={onPointerEnd}
         >
-          <img src={avatarPng} alt="桌宠形象" draggable="false" />
+          <img src={avatarPng} alt="伙伴形象" draggable="false" />
         </button>
       </section>
     </main>

@@ -4,6 +4,7 @@ mod backend;
 mod commands;
 mod state;
 mod window_manager;
+pub(crate) mod window_labels;
 
 use state::{AiModePayload, AiRoleMode, OverlayState};
 use std::{sync::Mutex, thread};
@@ -65,12 +66,12 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
     let mode_roleplay_item = CheckMenuItem::with_id(
         app,
         "ai-mode-roleplay",
-        "扮演模式",
+        "角色模式",
         true,
         false,
         None::<&str>,
     )?;
-    let mode_submenu = SubmenuBuilder::with_id(app, "ai-mode-submenu", "角色模式")
+    let mode_submenu = SubmenuBuilder::with_id(app, "ai-mode-submenu", "模式切换")
         .items(&[&mode_default_item, &mode_roleplay_item])
         .build()?;
     let toggle_item = MenuItem::with_id(
@@ -157,6 +158,7 @@ pub fn run() {
             commands::avatar::start_window_drag,
             commands::chat::set_bubble_text,
             commands::chat::set_bubble_interactive,
+            commands::backend::ensure_backend_ready,
             commands::menu::toggle_avatar_menu,
             commands::menu::menu_keep_alive,
             commands::menu::open_history_panel,

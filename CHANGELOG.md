@@ -59,7 +59,7 @@
 
 ## 2026-03-06
 
-- 重构桌宠窗口模型：由旧 `dialog` 方案切换为 `main/chat/bubble/menu` 四窗口。
+- 重构伙伴窗口模型：由旧 `dialog` 方案切换为 `main/chat/bubble/menu` 四窗口。
 - 完成 macOS overlay 能力接入：`NSPanel`、`CanJoinAllSpaces`、`FullScreenAuxiliary`、`Stationary`。
 - 调整 overlay 平台分发：`macos/windows/fallback` 按 `cfg` 路径隔离实现。
 - 菜单窗口默认改为启动隐藏，仅在点击 avatar 后显示；并补齐菜单 keepalive/历史面板交互链路。

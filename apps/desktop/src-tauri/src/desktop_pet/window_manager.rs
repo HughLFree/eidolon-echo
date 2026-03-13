@@ -4,16 +4,17 @@ use super::state::{
     menu_size, AnchorRect, MenuMode, OverlayState, WindowVisibilityState, BUBBLE_GAP_PX,
     MENU_GAP_PX, SCREEN_MARGIN_PX,
 };
+use super::window_labels::{BUBBLE_LABEL, CHAT_LABEL, MAIN_LABEL, MENU_LABEL, SETTINGS_LABEL};
 use crate::overlay;
 use std::sync::Mutex;
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position,
+    Runtime,
     Size, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 use tracing::warn;
 
 const CHAT_GAP_PX: i32 = 2;
-const SETTINGS_LABEL: &str = "settings";
 const SETTINGS_URL: &str = "settings.html";
 const SETTINGS_TITLE: &str = "Eidolon-Echo Settings";
 const SETTINGS_WIDTH: f64 = 860.0;
@@ -138,10 +139,10 @@ fn compute_menu_position<R: tauri::Runtime>(
 
 pub fn sync_bubble_position(app: &AppHandle) -> Result<(), String> {
     let main = app
-        .get_webview_window("main")
+        .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "main window not found".to_string())?;
     let bubble = app
-        .get_webview_window("bubble")
+        .get_webview_window(BUBBLE_LABEL)
         .ok_or_else(|| "bubble window not found".to_string())?;
 
     let main_pos = main.outer_position().map_err(|e| e.to_string())?;
@@ -166,10 +167,10 @@ pub fn sync_bubble_position(app: &AppHandle) -> Result<(), String> {
 
 pub fn sync_chat_position(app: &AppHandle) -> Result<(), String> {
     let main = app
-        .get_webview_window("main")
+        .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "main window not found".to_string())?;
     let chat = app
-        .get_webview_window("chat")
+        .get_webview_window(CHAT_LABEL)
         .ok_or_else(|| "chat window not found".to_string())?;
 
     let main_pos = main.outer_position().map_err(|e| e.to_string())?;
@@ -204,10 +205,10 @@ pub fn sync_menu_position(app: &AppHandle) -> Result<(), String> {
 
     let anchor = anchor.ok_or_else(|| "menu anchor is missing".to_string())?;
     let main = app
-        .get_webview_window("main")
+        .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "main window not found".to_string())?;
     let menu = app
-        .get_webview_window("menu")
+        .get_webview_window(MENU_LABEL)
         .ok_or_else(|| "menu window not found".to_string())?;
 
     let (w, h) = menu_size(mode);
@@ -234,16 +235,16 @@ pub fn hide_pet_windows(app: &AppHandle) -> Result<(), String> {
 
 pub fn toggle_pet_windows(app: &AppHandle) -> Result<(), String> {
     let main = app
-        .get_webview_window("main")
+        .get_webview_window(MAIN_LABEL)
         .ok_or_else(|| "main window not found".to_string())?;
     let bubble = app
-        .get_webview_window("bubble")
+        .get_webview_window(BUBBLE_LABEL)
         .ok_or_else(|| "bubble window not found".to_string())?;
     let chat = app
-        .get_webview_window("chat")
+        .get_webview_window(CHAT_LABEL)
         .ok_or_else(|| "chat window not found".to_string())?;
     let menu = app
-        .get_webview_window("menu")
+        .get_webview_window(MENU_LABEL)
         .ok_or_else(|| "menu window not found".to_string())?;
 
     let current_visibility = WindowVisibilityState {
@@ -302,7 +303,7 @@ pub fn bootstrap_desktop_pet(app: &AppHandle) {
         warn!("overlay runtime configuration failed: {error}");
     }
 
-    if let Some(main) = app.get_webview_window("main") {
+    if let Some(main) = app.get_webview_window(MAIN_LABEL) {
         let app_handle = app.clone();
         let _ = sync_bubble_position(&app_handle);
         let _ = sync_chat_position(&app_handle);
@@ -318,7 +319,7 @@ pub fn bootstrap_desktop_pet(app: &AppHandle) {
     }
 }
 
-pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
+pub fn open_settings_window<R: Runtime>(app: &AppHandle<R>) -> Result<(), String> {
     let settings = ensure_settings_window(app)?;
 
     if !settings.is_visible().map_err(|e| e.to_string())? {
@@ -328,7 +329,7 @@ pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-fn ensure_settings_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+fn ensure_settings_window<R: Runtime>(app: &AppHandle<R>) -> Result<tauri::WebviewWindow<R>, String> {
     if let Some(settings) = app.get_webview_window(SETTINGS_LABEL) {
         return Ok(settings);
     }

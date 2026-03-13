@@ -2,6 +2,7 @@
 
 pub mod ai;
 pub mod avatar;
+pub mod backend;
 pub mod chat;
 pub mod menu;
 pub mod overlay;

@@ -26,7 +26,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<(), String> {
     platform::bootstrap(app)
 }
 
-/// 在桌宠启动主流程前执行，用于准备窗口初始状态。
+/// 在伙伴启动主流程前执行，用于准备窗口初始状态。
 /// macOS 下会先隐藏启动窗口，再由 NSPanel 接管显示。
 pub fn prepare_startup(app: &AppHandle) -> Result<(), String> {
     platform::prepare_startup(app)

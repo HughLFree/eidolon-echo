@@ -12,6 +12,47 @@ const AUTO_HIDE_MS = 5000;
 const FADE_MS = 200;
 const HISTORY_PAGE_SIZE = 10;
 
+function toUserFriendlyLoadMessage(error) {
+  const raw = String(error?.message || error || "").trim();
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes("backend startup failed")
+    || lower.includes("unable to locate backend sidecar binary")
+    || lower.includes("failed to spawn backend process")
+    || lower.includes("timed out")
+    || lower.includes("exited during startup")
+  ) {
+    return "本地后端启动失败。请完全退出应用后重试；若仍失败，请在终端先运行后端查看具体错误。";
+  }
+
+  if (
+    lower.includes("failed to fetch")
+    || lower.includes("load failed")
+    || lower.includes("networkerror")
+    || lower.includes("connection refused")
+    || lower.includes("connect")
+    || lower.includes("timed out")
+  ) {
+    return "无法加载历史消息。请先确认应用已正常启动；如果是首次使用，请在“设置 -> API 设置”完成模型配置。";
+  }
+
+  if (
+    lower.includes("401")
+    || lower.includes("403")
+    || lower.includes("unauthorized")
+    || lower.includes("authentication")
+    || lower.includes("invalid api key")
+    || lower.includes("api key")
+    || lower.includes("authentication fails")
+    || lower.includes("invalid_request_error")
+  ) {
+    return "无法加载历史消息。模型鉴权失败，请在“设置 -> API 设置”检查 api_key / base_url / model_name。";
+  }
+
+  return raw ? `加载失败：${raw}` : "加载失败，请稍后重试。";
+}
+
 function MenuApp() {
   const [mode, setMode] = useState("panel");
   const [fading, setFading] = useState(false);
@@ -143,6 +184,7 @@ function MenuApp() {
     clearTimers();
 
     try {
+      await ensureBackendReady();
       await syncModeFromTauri();
       await invoke("open_history_panel");
       resetHistoryState();
@@ -150,7 +192,7 @@ function MenuApp() {
       setMode("history");
       modeRef.current = "history";
     } catch (error) {
-      setMessages([{ role: "assistant", content: `加载失败：${error.message}` }]);
+      setMessages([{ role: "assistant", content: toUserFriendlyLoadMessage(error) }]);
       setHistoryCursor(null);
       setHasMoreHistory(false);
       setMode("history");
@@ -236,7 +278,7 @@ function MenuApp() {
         onClick={() => onSelectHistoryMessage(message)}
         type="button"
       >
-        <p className="history-role">{message.role === "assistant" ? "桌宠" : "你"}</p>
+        <p className="history-role">{message.role === "assistant" ? "伙伴" : "你"}</p>
         <p className="history-text">{message.content}</p>
       </button>
     ));
@@ -267,7 +309,7 @@ function MenuApp() {
           </header>
           {selectedMessage ? (
             <article className="history-detail">
-              <p className="history-role">{selectedMessage.role === "assistant" ? "桌宠" : "你"}</p>
+              <p className="history-role">{selectedMessage.role === "assistant" ? "伙伴" : "你"}</p>
               <p className="history-text-full">{selectedMessage.content}</p>
             </article>
           ) : (
@@ -281,6 +323,15 @@ function MenuApp() {
       )}
     </main>
   );
+}
+
+async function ensureBackendReady() {
+  try {
+    await invoke("ensure_backend_ready");
+  } catch (error) {
+    const message = String(error?.message || error || "").trim();
+    throw new Error(message || "backend startup failed");
+  }
 }
 
 createRoot(document.getElementById("menu-root")).render(<MenuApp />);

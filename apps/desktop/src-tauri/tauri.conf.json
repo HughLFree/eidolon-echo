@@ -5,7 +5,7 @@
   "identifier": "io.github.hughlfree.eidolonecho",
   "build": {
     "beforeDevCommand": "ROOT=\"$PWD\"; while [ \"$ROOT\" != \"/\" ]; do if [ -d \"$ROOT/apps/desktop/web\" ]; then cd \"$ROOT/apps/desktop/web\" && npm run dev; exit $?; fi; if [ -d \"$ROOT/web\" ] && [ -f \"$ROOT/src-tauri/tauri.conf.json\" ]; then cd \"$ROOT/web\" && npm run dev; exit $?; fi; ROOT=\"$(dirname \"$ROOT\")\"; done; echo 'web dir not found' >&2; exit 1",
-    "beforeBuildCommand": "bash ./scripts/prepare-release-sidecar.sh",
+    "beforeBuildCommand": "ROOT=\"$PWD\"; while [ \"$ROOT\" != \"/\" ]; do if [ -f \"$ROOT/apps/desktop/src-tauri/scripts/prepare-release-sidecar.sh\" ]; then bash \"$ROOT/apps/desktop/src-tauri/scripts/prepare-release-sidecar.sh\"; exit $?; fi; if [ -f \"$ROOT/scripts/prepare-release-sidecar.sh\" ] && [ -f \"$ROOT/tauri.conf.json\" ]; then bash \"$ROOT/scripts/prepare-release-sidecar.sh\"; exit $?; fi; ROOT=\"$(dirname \"$ROOT\")\"; done; echo 'prepare-release-sidecar.sh not found' >&2; exit 1",
     "devUrl": "http://127.0.0.1:1420",
     "frontendDist": "../web/dist"
   },

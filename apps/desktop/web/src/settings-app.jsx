@@ -42,7 +42,7 @@ const settingsPages = [
   },
   {
     id: PAGE_ROLEPLAY,
-    title: "角色扮演",
+    title: "角色模式",
     description: "角色设定与开场白"
   },
   {
@@ -61,18 +61,31 @@ const defaultProviderForm = {
 };
 
 const defaultModeForm = {
-  avatarPath: "/assets/pet/ava.png",
+  avatarPath: "/assets/pet/default-avatar.png",
   systemPrompt:
-    "你是一个桌宠 AI 助手。\n\n要求：\n- 回答简洁、明确、可执行。\n- 优先使用中文回复。\n- 不要编造事实；不确定时明确说明不确定。",
+    "你是一个伙伴型 AI 助手。\n\n要求：\n- 回答简洁、明确、可执行。\n- 优先使用中文回复。\n- 不要编造事实；不确定时明确说明不确定。",
   contextLimit: "12"
 };
 
 const roleplayModeForm = {
-  avatarPath: "/assets/pet/av3a.png",
+  avatarPath: "/assets/pet/roleplay-avatar.png",
   systemPrompt: "你是一个有角色设定的 AI 助手，回答要贴合角色语气。",
   openingMessage: "",
   contextLimit: "12"
 };
+
+const SETTINGS_LOAD_RETRY_MAX = 4;
+const SETTINGS_LOAD_RETRY_DELAY_MS = 250;
+
+function normalizeAvatarPath(path) {
+  if (path === "/assets/pet/ava.png") {
+    return "/assets/pet/default-avatar.png";
+  }
+  if (path === "/assets/pet/av3a.png") {
+    return "/assets/pet/roleplay-avatar.png";
+  }
+  return path || "";
+}
 
 function normalizeOptionalNumber(raw, { min = null, max = null } = {}) {
   const text = String(raw ?? "").trim();
@@ -115,6 +128,7 @@ export default function SettingsApp() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [clearingData, setClearingData] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [statusKind, setStatusKind] = useState("neutral");
 
@@ -157,6 +171,12 @@ export default function SettingsApp() {
   }, []);
 
   useEffect(() => {
+    if (activePage !== PAGE_MISC && confirmingClear) {
+      setConfirmingClear(false);
+    }
+  }, [activePage, confirmingClear]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
@@ -164,10 +184,7 @@ export default function SettingsApp() {
       setStatusText("");
 
       try {
-        const [providers, profiles] = await Promise.all([
-          listAiProviders(BACKEND_BASE_URL, { withDisabled: true }),
-          listProfiles(BACKEND_BASE_URL)
-        ]);
+        const { providers, profiles } = await loadSettingsSnapshotWithRetry();
 
         if (cancelled) {
           return;
@@ -201,7 +218,7 @@ export default function SettingsApp() {
         setDefaultForm(
           defaultProfile
             ? {
-                avatarPath: defaultProfile.avatar_path || "",
+                avatarPath: normalizeAvatarPath(defaultProfile.avatar_path),
                 systemPrompt: defaultProfile.system_prompt || "",
                 contextLimit:
                   typeof defaultProfile.context_limit === "number"
@@ -217,7 +234,7 @@ export default function SettingsApp() {
         setRoleplayForm(
           roleplayProfile
             ? {
-                avatarPath: roleplayProfile.avatar_path || "",
+                avatarPath: normalizeAvatarPath(roleplayProfile.avatar_path),
                 systemPrompt: roleplayProfile.system_prompt || "",
                 openingMessage: roleplayProfile.opening_message || "",
                 contextLimit:
@@ -230,7 +247,7 @@ export default function SettingsApp() {
       } catch (error) {
         if (!cancelled) {
           setStatusKind("error");
-          setStatusText(`加载失败：${error.message}`);
+          setStatusText(toUserFriendlySettingsError(error, "加载失败"));
         }
       } finally {
         if (!cancelled) {
@@ -251,6 +268,7 @@ export default function SettingsApp() {
     setStatusText("");
 
     try {
+      await ensureBackendReady();
       const providerPayload = {
         name: "DeepSeek",
         provider_type: "deepseek",
@@ -279,7 +297,7 @@ export default function SettingsApp() {
       const defaultPayload = {
         mode: "default",
         name: "默认助手",
-        avatar_path: trimOrNull(defaultForm.avatarPath),
+        avatar_path: trimOrNull(normalizeAvatarPath(defaultForm.avatarPath)),
         system_prompt: trimOrNull(defaultForm.systemPrompt) || defaultModeForm.systemPrompt,
         opening_message: null,
         context_limit: normalizeOptionalInteger(defaultForm.contextLimit, { min: 1, max: 200 }) || 12,
@@ -301,7 +319,7 @@ export default function SettingsApp() {
       const roleplayPayload = {
         mode: "roleplay",
         name: "扮演助手",
-        avatar_path: trimOrNull(roleplayForm.avatarPath),
+        avatar_path: trimOrNull(normalizeAvatarPath(roleplayForm.avatarPath)),
         system_prompt: trimOrNull(roleplayForm.systemPrompt) || roleplayModeForm.systemPrompt,
         opening_message: trimOrNull(roleplayForm.openingMessage),
         context_limit:
@@ -325,17 +343,21 @@ export default function SettingsApp() {
       setStatusText("设置已保存并写入数据库");
     } catch (error) {
       setStatusKind("error");
-      setStatusText(`保存失败：${error.message}`);
+      setStatusText(toUserFriendlySettingsError(error, "保存失败"));
     } finally {
       setSaving(false);
     }
   }
 
   async function onClearLocalData() {
-    const confirmed = window.confirm(
-      "这会删除本地聊天记录、模型配置和数据库内容，并立即重建一个全新的本地数据目录。是否继续？"
-    );
-    if (!confirmed) {
+    if (clearingData) {
+      return;
+    }
+
+    if (!confirmingClear) {
+      setConfirmingClear(true);
+      setStatusKind("error");
+      setStatusText("再次点击“确认清除”后将删除本地数据库与配置，此操作不可撤销。");
       return;
     }
 
@@ -385,10 +407,10 @@ export default function SettingsApp() {
         setDefaultProfileExists(true);
         setDefaultProfileId(defaultProfile.id);
         setDefaultForm({
-          avatarPath: defaultProfile.avatar_path || "",
-          systemPrompt: defaultProfile.system_prompt || "",
-          contextLimit:
-            typeof defaultProfile.context_limit === "number"
+                avatarPath: normalizeAvatarPath(defaultProfile.avatar_path),
+                systemPrompt: defaultProfile.system_prompt || "",
+                contextLimit:
+                  typeof defaultProfile.context_limit === "number"
               ? String(defaultProfile.context_limit)
               : defaultModeForm.contextLimit
         });
@@ -399,10 +421,10 @@ export default function SettingsApp() {
         setRoleplayProfileExists(true);
         setRoleplayProfileId(roleplayProfile.id);
         setRoleplayForm({
-          avatarPath: roleplayProfile.avatar_path || "",
-          systemPrompt: roleplayProfile.system_prompt || "",
-          openingMessage: roleplayProfile.opening_message || "",
-          contextLimit:
+                avatarPath: normalizeAvatarPath(roleplayProfile.avatar_path),
+                systemPrompt: roleplayProfile.system_prompt || "",
+                openingMessage: roleplayProfile.opening_message || "",
+                contextLimit:
             typeof roleplayProfile.context_limit === "number"
               ? String(roleplayProfile.context_limit)
               : roleplayModeForm.contextLimit
@@ -411,12 +433,23 @@ export default function SettingsApp() {
 
       setStatusKind("success");
       setStatusText(`本地数据已清除，后端已重建。数据目录：${result.dataDir || result.data_dir}`);
+      setConfirmingClear(false);
     } catch (error) {
       setStatusKind("error");
-      setStatusText(`清除失败：${error.message}`);
+      setStatusText(toUserFriendlySettingsError(error, "清除失败"));
+      setConfirmingClear(false);
     } finally {
       setClearingData(false);
     }
+  }
+
+  function onCancelClear() {
+    if (clearingData) {
+      return;
+    }
+    setConfirmingClear(false);
+    setStatusKind("neutral");
+    setStatusText("已取消清除本地数据。");
   }
 
   const statusClassName = (() => {
@@ -451,7 +484,7 @@ export default function SettingsApp() {
             <p className="hero-eyebrow">Overview</p>
             <h2>{appName}</h2>
             <p className="hero-text">
-              这是一个以 AI 对话为核心的桌面助手，采用前后端分离结构。设置中心现在按用途拆成四个页面，减少不同配置之间的混用。
+              这是一个以 AI 对话为核心的桌面助手，采用前后端分离结构。
             </p>
           </div>
           <div className="hero-meta">
@@ -479,10 +512,10 @@ export default function SettingsApp() {
             </article>
             <article className="info-tile">
               <h3>默认模式</h3>
-              <p>配置普通桌宠对话的人设、头像和上下文保留数量。</p>
+              <p>配置普通模式对话的人设、头像和上下文保留数量。</p>
             </article>
             <article className="info-tile">
-              <h3>角色扮演</h3>
+              <h3>角色模式</h3>
               <p>配置角色模式的系统提示词、开场白和独立头像。</p>
             </article>
             <article className="info-tile">
@@ -500,12 +533,12 @@ export default function SettingsApp() {
               适合日常简洁对话，使用默认助手设定。
             </p>
             <p>
-              <strong>角色扮演模式</strong>
+              <strong>角色模式</strong>
               适合带角色语气的连续交流，可额外定义开场白。
             </p>
             <p>
               <strong>设置建议</strong>
-              先完成 API 设置，再分别调整默认模式和角色扮演模式。
+              先完成 API 设置，再分别调整默认模式和角色模式。
             </p>
           </div>
         </section>
@@ -597,7 +630,7 @@ export default function SettingsApp() {
                 onChange={(event) =>
                   setDefaultForm((prev) => ({ ...prev, avatarPath: event.target.value }))
                 }
-                placeholder="/assets/pet/ava.png"
+                placeholder="/assets/pet/default-avatar.png"
               />
             </label>
             <label>
@@ -635,7 +668,7 @@ export default function SettingsApp() {
       <>
         {renderEditorToolbar()}
         <section className="card">
-          <h2>扮演模式配置</h2>
+          <h2>角色模式配置</h2>
           <div className="field-grid">
             <label>
               <span>头像路径（PNG）</span>
@@ -644,7 +677,7 @@ export default function SettingsApp() {
                 onChange={(event) =>
                   setRoleplayForm((prev) => ({ ...prev, avatarPath: event.target.value }))
                 }
-                placeholder="/assets/pet/av3a.png"
+                placeholder="/assets/pet/roleplay-avatar.png"
               />
             </label>
             <label>
@@ -690,6 +723,11 @@ export default function SettingsApp() {
   function renderMiscSettings() {
     return (
       <>
+        <section className="page-toolbar">
+          <p className={statusClassName}>
+            {statusText || "清除会重建本地数据库。若提示失败，请先退出独立启动的后端进程。"}
+          </p>
+        </section>
         <section className="card danger-card">
           <h2>本地数据</h2>
           <div className="danger-copy">
@@ -705,8 +743,13 @@ export default function SettingsApp() {
               onClick={onClearLocalData}
               disabled={loading || saving || clearingData}
             >
-              {clearingData ? "清除中..." : "清除本地数据"}
+              {clearingData ? "清除中..." : confirmingClear ? "确认清除" : "清除本地数据"}
             </button>
+            {confirmingClear && !clearingData ? (
+              <button className="danger-cancel-btn" type="button" onClick={onCancelClear}>
+                取消
+              </button>
+            ) : null}
           </div>
         </section>
       </>
@@ -758,4 +801,94 @@ export default function SettingsApp() {
       </section>
     </main>
   );
+}
+
+async function ensureBackendReady() {
+  try {
+    await invoke("ensure_backend_ready");
+  } catch (error) {
+    const message = String(error?.message || error || "").trim();
+    throw new Error(message || "backend startup failed");
+  }
+}
+
+async function loadSettingsSnapshot() {
+  await ensureBackendReady();
+  const [providers, profiles] = await Promise.all([
+    listAiProviders(BACKEND_BASE_URL, { withDisabled: true }),
+    listProfiles(BACKEND_BASE_URL)
+  ]);
+  return { providers, profiles };
+}
+
+async function loadSettingsSnapshotWithRetry() {
+  let lastError = null;
+
+  for (let i = 0; i < SETTINGS_LOAD_RETRY_MAX; i += 1) {
+    try {
+      return await loadSettingsSnapshot();
+    } catch (error) {
+      lastError = error;
+      if (!isNetworkLikeError(error) || i === SETTINGS_LOAD_RETRY_MAX - 1) {
+        throw error;
+      }
+      await sleep(SETTINGS_LOAD_RETRY_DELAY_MS);
+    }
+  }
+
+  throw lastError || new Error("settings load failed");
+}
+
+function isNetworkLikeError(error) {
+  const raw = String(error?.message || error || "").toLowerCase();
+  return (
+    raw.includes("load failed")
+    || raw.includes("failed to fetch")
+    || raw.includes("networkerror")
+    || raw.includes("connection refused")
+    || raw.includes("connect")
+    || raw.includes("timed out")
+  );
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function toUserFriendlySettingsError(error, prefix) {
+  const raw = String(error?.message || error || "").trim();
+  const lower = raw.toLowerCase();
+
+  if (
+    lower.includes("backend startup failed")
+    || lower.includes("unable to locate backend sidecar binary")
+    || lower.includes("failed to spawn backend process")
+    || lower.includes("exited during startup")
+    || lower.includes("load failed")
+    || lower.includes("failed to fetch")
+    || lower.includes("networkerror")
+    || lower.includes("connection refused")
+    || lower.includes("connect")
+    || lower.includes("timed out")
+  ) {
+    const detail = raw ? ` 详情：${raw}` : "";
+    return `${prefix}：无法连接到后端服务。请先完全退出应用后重试。${detail}`;
+  }
+
+  if (
+    lower.includes("401")
+    || lower.includes("403")
+    || lower.includes("unauthorized")
+    || lower.includes("authentication")
+    || lower.includes("invalid api key")
+    || lower.includes("api key")
+    || lower.includes("authentication fails")
+    || lower.includes("invalid_request_error")
+  ) {
+    return `${prefix}：模型鉴权失败，请检查 API 设置。`;
+  }
+
+  return raw ? `${prefix}：${raw}` : `${prefix}：请稍后重试。`;
 }

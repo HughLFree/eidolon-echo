@@ -125,7 +125,12 @@ export async function fetchConversationMessages(baseUrl, { limit = 50, mode = "d
   return await parseJsonOrThrow(response);
 }
 
-export async function fetchBackendHealth(baseUrl) {
-  const response = await fetch(`${baseUrl}/api/health`);
+export async function fetchBackendHealth(baseUrl, { mode = null } = {}) {
+  const query = new URLSearchParams();
+  if (typeof mode === "string" && mode.trim()) {
+    query.set("mode", mode.trim());
+  }
+  const suffix = query.toString();
+  const response = await fetch(`${baseUrl}/api/health${suffix ? `?${suffix}` : ""}`);
   return await parseJsonOrThrow(response);
 }

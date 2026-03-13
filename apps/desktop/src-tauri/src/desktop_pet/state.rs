@@ -48,8 +48,8 @@ impl Default for AiRoleMode {
 impl AiRoleMode {
     pub fn avatar_png(self) -> &'static str {
         match self {
-            Self::Default => "/assets/pet/ava.png",
-            Self::Roleplay => "/assets/pet/av3a.png",
+            Self::Default => "/assets/pet/default-avatar.png",
+            Self::Roleplay => "/assets/pet/roleplay-avatar.png",
         }
     }
 }
