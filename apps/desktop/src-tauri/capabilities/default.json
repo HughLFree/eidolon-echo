@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default capability for desktop pet windows",
-  "windows": ["main", "chat", "bubble", "menu"],
+  "windows": ["main", "chat", "bubble", "menu", "settings"],
   "permissions": ["core:default"]
 }

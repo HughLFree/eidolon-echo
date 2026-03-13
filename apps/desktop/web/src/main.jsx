@@ -5,7 +5,6 @@ import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./styles.css";
-import { readActiveSessionId } from "./session";
 
 const DRAG_THRESHOLD = 4;
 const KEEP_ALIVE_INTERVAL_MS = 350;
@@ -18,22 +17,12 @@ function App() {
   const [aiMode, setAiMode] = useState("default");
 
   useEffect(() => {
-    void invoke("set_overlay_always_on_top", { always_on_top: true }).catch(() => {
+    void invoke("set_overlay_always_on_top", {
+      alwaysOnTop: true
+    }).catch(() => {
       // no-op
     });
   }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        void invoke("hide_pet");
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   useEffect(() => {
     let unlistenMode;
 
@@ -45,8 +34,6 @@ function App() {
         }
         if (typeof current?.avatarPng === "string") {
           setAvatarPng(current.avatarPng);
-        } else if (typeof current?.avatar_png === "string") {
-          setAvatarPng(current.avatar_png);
         }
       } catch {
         // no-op
@@ -57,7 +44,7 @@ function App() {
         if (typeof nextMode === "string") {
           setAiMode(nextMode);
         }
-        const avatar = event.payload?.avatarPng ?? event.payload?.avatar_png;
+        const avatar = event.payload?.avatarPng;
         if (typeof avatar === "string") {
           setAvatarPng(avatar);
         }
@@ -93,21 +80,8 @@ function App() {
       return;
     }
 
-    let activeSessionId = null;
     try {
-      activeSessionId = await invoke("get_active_session_id", { mode: aiMode });
-    } catch {
-      // no-op
-    }
-    if (typeof activeSessionId !== "number") {
-      activeSessionId = readActiveSessionId(aiMode);
-    }
-
-    try {
-      await invoke("toggle_avatar_menu", {
-        anchor,
-        session_id: activeSessionId
-      });
+      await invoke("toggle_avatar_menu", { anchor });
     } catch (error) {
       console.error("toggle_avatar_menu failed:", error);
     }

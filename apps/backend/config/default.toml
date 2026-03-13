@@ -8,6 +8,8 @@ path = "apps/backend/data/chat.db"
 [ai]
 default_provider = "deepseek"
 chat_history_limit = 12
+context_cache_max_messages_per_mode = 100
+context_cache_max_modes = 128
 
 [ai.providers.deepseek]
 base_url = "https://api.deepseek.com/v1"

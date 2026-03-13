@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Desktop AI Backend API
   version: 0.1.0
-  description: API for desktop AI pet chat and history.
+  description: API for desktop AI pet chat, history, providers and profiles.
 
 servers:
   - url: http://127.0.0.1:3001
@@ -50,17 +50,11 @@ paths:
               schema:
                 type: string
 
-  /api/sessions/{session_id}/messages:
+  /api/messages:
     get:
-      summary: List messages in session
+      summary: List messages for current mode conversation
       operationId: listMessages
       parameters:
-        - name: session_id
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
         - name: limit
           in: query
           required: false
@@ -85,11 +79,328 @@ paths:
             format: int64
       responses:
         "200":
-          description: Session messages
+          description: Conversation messages
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageListResponse"
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/ai-providers:
+    get:
+      summary: List AI providers
+      operationId: listAiProviders
+      parameters:
+        - name: with_disabled
+          in: query
+          required: false
+          description: include disabled providers when true
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Provider list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AiProvider"
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      summary: Create AI provider
+      operationId: createAiProvider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAiProviderRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
+        "400":
+          description: Invalid request
+          content:
+            text/plain:
+              schema:
+                type: string
+        "409":
+          description: Duplicate id
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/ai-providers/{id}:
+    get:
+      summary: Get AI provider by id
+      operationId: getAiProvider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
+        "404":
+          description: Not found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+    put:
+      summary: Update AI provider
+      operationId: updateAiProvider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAiProviderRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProvider"
+        "400":
+          description: Invalid request
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Not found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+    delete:
+      summary: Delete AI provider
+      operationId: deleteAiProvider
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "404":
+          description: Not found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/profiles:
+    get:
+      summary: List profiles
+      operationId: listProfiles
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/AiRoleMode"
+      responses:
+        "200":
+          description: Profile list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Profile"
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+    post:
+      summary: Create profile
+      operationId: createProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfileRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          description: Invalid request
+          content:
+            text/plain:
+              schema:
+                type: string
+        "409":
+          description: Duplicate id
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/profiles/{id}:
+    get:
+      summary: Get profile by id
+      operationId: getProfile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "404":
+          description: Not found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+    put:
+      summary: Update profile
+      operationId: updateProfile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProfileRequest"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          description: Invalid request
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Not found
+          content:
+            text/plain:
+              schema:
+                type: string
+        "500":
+          description: Internal error
+          content:
+            text/plain:
+              schema:
+                type: string
+    delete:
+      summary: Delete profile
+      operationId: deleteProfile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "404":
+          description: Not found
+          content:
+            text/plain:
+              schema:
+                type: string
         "500":
           description: Internal error
           content:
@@ -103,10 +414,6 @@ components:
       type: object
       required: [message]
       properties:
-        session_id:
-          type: integer
-          format: int64
-          nullable: true
         mode:
           $ref: "#/components/schemas/AiRoleMode"
         message:
@@ -115,9 +422,9 @@ components:
 
     ChatResponse:
       type: object
-      required: [session_id, mode, reply]
+      required: [conversation_id, mode, reply]
       properties:
-        session_id:
+        conversation_id:
           type: integer
           format: int64
         mode:
@@ -139,12 +446,12 @@ components:
 
     StoredMessage:
       type: object
-      required: [id, session_id, role, content, created_at]
+      required: [id, conversation_id, role, content, created_at]
       properties:
         id:
           type: integer
           format: int64
-        session_id:
+        conversation_id:
           type: integer
           format: int64
         role:
@@ -158,12 +465,223 @@ components:
 
     MessageListResponse:
       type: object
-      required: [session_id, messages]
+      required: [conversation_id, messages]
       properties:
-        session_id:
+        conversation_id:
           type: integer
           format: int64
         messages:
           type: array
           items:
             $ref: "#/components/schemas/StoredMessage"
+
+    DeleteResponse:
+      type: object
+      required: [deleted]
+      properties:
+        deleted:
+          type: boolean
+
+    AiProvider:
+      type: object
+      required:
+        - id
+        - name
+        - provider_type
+        - model_name
+        - enabled
+        - is_default
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+          nullable: true
+        model_name:
+          type: string
+        api_key_ref:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+        is_default:
+          type: boolean
+        temperature:
+          type: number
+          format: double
+          nullable: true
+        max_tokens:
+          type: integer
+          format: int64
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    CreateAiProviderRequest:
+      type: object
+      required: [id, name, provider_type, model_name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+          nullable: true
+        model_name:
+          type: string
+        api_key_ref:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+        is_default:
+          type: boolean
+        temperature:
+          type: number
+          format: double
+          nullable: true
+        max_tokens:
+          type: integer
+          format: int64
+          nullable: true
+
+    UpdateAiProviderRequest:
+      type: object
+      required: [name, provider_type, model_name, enabled, is_default]
+      properties:
+        name:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+          nullable: true
+        model_name:
+          type: string
+        api_key_ref:
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+        is_default:
+          type: boolean
+        temperature:
+          type: number
+          format: double
+          nullable: true
+        max_tokens:
+          type: integer
+          format: int64
+          nullable: true
+
+    Profile:
+      type: object
+      required:
+        - id
+        - mode
+        - name
+        - system_prompt
+        - context_limit
+        - memory_enabled
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        mode:
+          $ref: "#/components/schemas/AiRoleMode"
+        name:
+          type: string
+        avatar_path:
+          type: string
+          nullable: true
+        system_prompt:
+          type: string
+        opening_message:
+          type: string
+          nullable: true
+        context_limit:
+          type: integer
+          format: int64
+        memory_enabled:
+          type: boolean
+        provider_id:
+          type: string
+          nullable: true
+        extra_json:
+          type: string
+          nullable: true
+        created_at:
+          type: integer
+          format: int64
+        updated_at:
+          type: integer
+          format: int64
+
+    CreateProfileRequest:
+      type: object
+      required: [id, mode, name, system_prompt]
+      properties:
+        id:
+          type: string
+        mode:
+          $ref: "#/components/schemas/AiRoleMode"
+        name:
+          type: string
+        avatar_path:
+          type: string
+          nullable: true
+        system_prompt:
+          type: string
+        opening_message:
+          type: string
+          nullable: true
+        context_limit:
+          type: integer
+          format: int64
+          default: 12
+        provider_id:
+          type: string
+          nullable: true
+        extra_json:
+          type: string
+          nullable: true
+
+    UpdateProfileRequest:
+      type: object
+      required: [mode, name, system_prompt, context_limit]
+      properties:
+        mode:
+          $ref: "#/components/schemas/AiRoleMode"
+        name:
+          type: string
+        avatar_path:
+          type: string
+          nullable: true
+        system_prompt:
+          type: string
+        opening_message:
+          type: string
+          nullable: true
+        context_limit:
+          type: integer
+          format: int64
+        provider_id:
+          type: string
+          nullable: true
+        extra_json:
+          type: string
+          nullable: true

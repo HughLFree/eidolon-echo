@@ -1,6 +1,6 @@
 //! Avatar-related commands: window dragging and hiding the desktop pet windows.
 
-use super::super::windows::hide_pet_windows;
+use super::super::window_manager::hide_pet_windows;
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]

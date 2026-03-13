@@ -1,13 +1,11 @@
-//! HTTP handlers for health check, chat, history list and OpenAPI output.
-
+use super::{internal_error, profile_context_limit, profile_memory_enabled};
 use crate::{
     ai::{AiRoleMode, ChatMessage},
     db, AppState,
 };
 use axum::{
-    extract::{Path, Query, State},
-    http::{header, StatusCode},
-    response::IntoResponse,
+    extract::{Query, State},
+    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -17,21 +15,15 @@ const HISTORY_PAGE_SIZE: i64 = 10;
 
 #[derive(Debug, Deserialize)]
 pub struct ChatRequest {
-    pub session_id: Option<i64>,
     pub message: String,
     pub mode: Option<AiRoleMode>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ChatResponse {
-    pub session_id: i64,
+    pub conversation_id: i64,
     pub mode: AiRoleMode,
     pub reply: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct HealthResponse {
-    pub status: &'static str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,19 +35,8 @@ pub struct MessageQuery {
 
 #[derive(Debug, Serialize)]
 pub struct MessageListResponse {
-    pub session_id: i64,
+    pub conversation_id: i64,
     pub messages: Vec<db::StoredMessage>,
-}
-
-pub async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse { status: "ok" })
-}
-
-pub async fn openapi_yaml() -> impl IntoResponse {
-    (
-        [(header::CONTENT_TYPE, "application/yaml; charset=utf-8")],
-        include_str!("../openapi/openapi.yaml"),
-    )
 }
 
 pub async fn chat(
@@ -68,48 +49,69 @@ pub async fn chat(
     }
 
     let mode = payload.mode.unwrap_or_default();
-    let context_need = (state.chat_history_limit as usize).saturating_mul(2);
+    let (mode_profile, conversation_id) = db::resolve_mode_profile_and_conversation(&state.pool, mode)
+        .await
+        .map_err(internal_error)?;
 
-    if mode == AiRoleMode::Roleplay {
-        if let Some(session_id) = payload.session_id {
-            ensure_roleplay_cache_for_context(&state, session_id, context_need).await?;
-        }
+    let memory_enabled = profile_memory_enabled(Some(&mode_profile));
+    let context_limit = profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
+
+    if memory_enabled {
+        ensure_memory_cache_for_context(&state, conversation_id, context_limit).await?;
     }
 
-    let (session_id, ai_messages): (i64, Vec<ChatMessage>) = {
+    let profile_prompt = {
+        let prompt = mode_profile.system_prompt.trim();
+        if prompt.is_empty() {
+            None
+        } else {
+            Some(prompt.to_string())
+        }
+    };
+    let system_prompt = profile_prompt
+        .as_deref()
+        .or(state.prompts.system_prompt.as_deref());
+
+    let ai_messages: Vec<ChatMessage> = {
         let mut manager = state
             .context_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         manager.prepare_chat_messages(
-            payload.session_id,
-            mode,
+            conversation_id,
             user_message,
-            state.prompts.system_prompt.as_deref(),
+            system_prompt,
             state.prompts.context_prompt.as_deref(),
-            state.chat_history_limit as usize,
+            context_limit,
         )
     };
 
-    let reply = state
-        .ai_client
+    let runtime_ai_client = super::runtime_ai::resolve_mode_ai_client(&state, Some(&mode_profile))
+        .await
+        .map_err(internal_error)?
+        .unwrap_or_else(|| state.ai_client.clone());
+
+    let reply = runtime_ai_client
         .chat(&ai_messages)
         .await
         .map_err(internal_error)?;
+
+    if memory_enabled {
+        db::append_message_pair(&state.pool, conversation_id, user_message, &reply)
+            .await
+            .map_err(internal_error)?;
+    }
 
     {
         let mut manager = state
             .context_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        manager.record_exchange(session_id, mode, user_message, &reply);
-        if mode == AiRoleMode::Roleplay {
-            manager.reserve_roleplay_history_db_sync(session_id);
-        }
+        manager.record_exchange(conversation_id, user_message, &reply);
     }
 
     Ok(Json(ChatResponse {
-        session_id,
+        conversation_id,
         mode,
         reply,
     }))
@@ -117,46 +119,59 @@ pub async fn chat(
 
 pub async fn list_messages(
     State(state): State<Arc<AppState>>,
-    Path(session_id): Path<i64>,
     Query(query): Query<MessageQuery>,
 ) -> Result<Json<MessageListResponse>, (StatusCode, String)> {
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let before_id = query.before_id;
     let mode = query.mode.unwrap_or_default();
+    let (mode_profile, conversation_id) = db::resolve_mode_profile_and_conversation(&state.pool, mode)
+        .await
+        .map_err(internal_error)?;
+    let memory_enabled = profile_memory_enabled(Some(&mode_profile));
 
-    let messages = if mode == AiRoleMode::Roleplay {
-        ensure_roleplay_cache_for_history(&state, session_id, before_id, limit as usize).await?
+    let context_limit = profile_context_limit(Some(&mode_profile), state.chat_history_limit as usize);
+
+    let messages = if memory_enabled {
+        ensure_memory_cache_for_history(
+            &state,
+            conversation_id,
+            before_id,
+            limit as usize,
+            context_limit,
+        )
+        .await?
     } else {
-        let manager = state
+        let mut manager = state
             .context_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        manager.list_cached_messages_desc(session_id, mode, limit as usize, before_id)
+        manager.list_cached_messages_desc(conversation_id, limit as usize, before_id)
     };
 
     Ok(Json(MessageListResponse {
-        session_id,
+        conversation_id,
         messages,
     }))
 }
 
-async fn ensure_roleplay_cache_for_context(
+async fn ensure_memory_cache_for_context(
     state: &Arc<AppState>,
-    session_id: i64,
+    conversation_id: i64,
     needed: usize,
 ) -> Result<(), (StatusCode, String)> {
+    let effective_needed = needed.clamp(1, 200);
     loop {
         let meta = {
-            let manager = state
+            let mut manager = state
                 .context_manager
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            manager.roleplay_cache_meta(session_id)
+            manager.conversation_cache_meta(conversation_id)
         };
 
         if !meta.hydrated {
-            let bootstrap_limit = HISTORY_PAGE_SIZE;
-            let latest = db::list_messages(&state.pool, session_id, bootstrap_limit)
+            let bootstrap_limit = effective_needed as i64;
+            let latest = db::list_messages(&state.pool, conversation_id, bootstrap_limit)
                 .await
                 .map_err(internal_error)?;
             let exhausted = latest.len() < bootstrap_limit as usize;
@@ -164,22 +179,23 @@ async fn ensure_roleplay_cache_for_context(
                 .context_manager
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            manager.hydrate_roleplay_latest_from_db(session_id, latest, exhausted);
+            manager.hydrate_conversation_latest_from_db(conversation_id, latest, exhausted);
             continue;
         }
 
-        if meta.cached_len >= needed || meta.db_exhausted {
+        if meta.cached_len >= effective_needed || meta.db_exhausted {
             return Ok(());
         }
 
         let Some(oldest_id) = meta.oldest_cached_id else {
             return Ok(());
         };
-        let pull_limit = needed
+        let pull_limit = effective_needed
             .saturating_sub(meta.cached_len)
             .max(HISTORY_PAGE_SIZE as usize)
             .min(200) as i64;
-        let older = db::list_messages_before_id(&state.pool, session_id, oldest_id, pull_limit)
+        let older =
+            db::list_messages_before_id(&state.pool, conversation_id, oldest_id, pull_limit)
             .await
             .map_err(internal_error)?;
         let exhausted = older.len() < pull_limit as usize;
@@ -188,40 +204,37 @@ async fn ensure_roleplay_cache_for_context(
             .context_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        manager.prepend_roleplay_older_from_db(session_id, older, exhausted);
-        if is_empty {
+        let progressed = manager.prepend_conversation_older_from_db(conversation_id, older, exhausted);
+        if is_empty || !progressed {
             return Ok(());
         }
     }
 }
 
-async fn ensure_roleplay_cache_for_history(
+async fn ensure_memory_cache_for_history(
     state: &Arc<AppState>,
-    session_id: i64,
+    conversation_id: i64,
     before_id: Option<i64>,
     limit: usize,
+    preload_limit: usize,
 ) -> Result<Vec<db::StoredMessage>, (StatusCode, String)> {
     let effective_limit = limit.clamp(1, 200);
+    let effective_preload = preload_limit.clamp(1, 200);
 
     loop {
         let (meta, cached) = {
-            let manager = state
+            let mut manager = state
                 .context_manager
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            let meta = manager.roleplay_cache_meta(session_id);
-            let cached = manager.list_cached_messages_desc(
-                session_id,
-                AiRoleMode::Roleplay,
-                effective_limit,
-                before_id,
-            );
+            let meta = manager.conversation_cache_meta(conversation_id);
+            let cached = manager.list_cached_messages_desc(conversation_id, effective_limit, before_id);
             (meta, cached)
         };
 
         if !meta.hydrated {
-            let bootstrap_limit = HISTORY_PAGE_SIZE;
-            let latest = db::list_messages(&state.pool, session_id, bootstrap_limit)
+            let bootstrap_limit = effective_preload as i64;
+            let latest = db::list_messages(&state.pool, conversation_id, bootstrap_limit)
                 .await
                 .map_err(internal_error)?;
             let exhausted = latest.len() < bootstrap_limit as usize;
@@ -229,7 +242,7 @@ async fn ensure_roleplay_cache_for_history(
                 .context_manager
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
-            manager.hydrate_roleplay_latest_from_db(session_id, latest, exhausted);
+            manager.hydrate_conversation_latest_from_db(conversation_id, latest, exhausted);
             continue;
         }
 
@@ -243,7 +256,8 @@ async fn ensure_roleplay_cache_for_history(
         let pull_limit = HISTORY_PAGE_SIZE
             .max(effective_limit.saturating_sub(cached.len()) as i64)
             .min(200);
-        let older = db::list_messages_before_id(&state.pool, session_id, oldest_id, pull_limit)
+        let older =
+            db::list_messages_before_id(&state.pool, conversation_id, oldest_id, pull_limit)
             .await
             .map_err(internal_error)?;
         let exhausted = older.len() < pull_limit as usize;
@@ -252,13 +266,9 @@ async fn ensure_roleplay_cache_for_history(
             .context_manager
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        manager.prepend_roleplay_older_from_db(session_id, older, exhausted);
-        if is_empty {
+        let progressed = manager.prepend_conversation_older_from_db(conversation_id, older, exhausted);
+        if is_empty || !progressed {
             return Ok(cached);
         }
     }
-}
-
-fn internal_error<E: std::fmt::Display>(err: E) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, err.to_string())
 }

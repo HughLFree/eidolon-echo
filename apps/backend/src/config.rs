@@ -27,6 +27,10 @@ pub struct AiConfig {
     pub default_provider: String,
     #[serde(default = "default_chat_history_limit")]
     pub chat_history_limit: i64,
+    #[serde(default = "default_context_cache_max_messages_per_mode")]
+    pub context_cache_max_messages_per_mode: usize,
+    #[serde(default = "default_context_cache_max_modes")]
+    pub context_cache_max_modes: usize,
     pub providers: HashMap<String, ProviderConfig>,
 }
 
@@ -79,11 +83,15 @@ impl AppConfig {
         if cfg.ai.chat_history_limit <= 0 {
             bail!("ai.chat_history_limit must be greater than 0");
         }
+        if cfg.ai.context_cache_max_messages_per_mode == 0 {
+            bail!("ai.context_cache_max_messages_per_mode must be greater than 0");
+        }
+        if cfg.ai.context_cache_max_modes == 0 {
+            bail!("ai.context_cache_max_modes must be greater than 0");
+        }
         for (provider_name, provider_cfg) in &cfg.ai.providers {
             if !(0.0..=2.0).contains(&provider_cfg.temperature) {
-                bail!(
-                    "ai.providers.{provider_name}.temperature must be between 0.0 and 2.0"
-                );
+                bail!("ai.providers.{provider_name}.temperature must be between 0.0 and 2.0");
             }
             if matches!(provider_cfg.max_tokens, Some(0)) {
                 bail!("ai.providers.{provider_name}.max_tokens must be greater than 0");
@@ -98,21 +106,29 @@ fn default_chat_history_limit() -> i64 {
     12
 }
 
+fn default_context_cache_max_messages_per_mode() -> usize {
+    100
+}
+
+fn default_context_cache_max_modes() -> usize {
+    128
+}
+
 fn default_temperature() -> f32 {
     0.7
 }
 
 fn load_env_files() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let local_env = format!("{manifest_dir}/.env.local");
-    let default_env = format!("{manifest_dir}/.env");
+    let env_default_path = format!("{manifest_dir}/.env.default");
+    let env_path = format!("{manifest_dir}/.env");
     let candidates = [
-        ".env.local",
+        ".env.default",
         ".env",
-        "apps/backend/.env.local",
+        "apps/backend/.env.default",
         "apps/backend/.env",
-        local_env.as_str(),
-        default_env.as_str(),
+        env_default_path.as_str(),
+        env_path.as_str(),
     ];
 
     for path in candidates {

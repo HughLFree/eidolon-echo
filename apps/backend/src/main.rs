@@ -8,7 +8,10 @@ mod prompts;
 
 use ai::{AiClient, ContextManager, OpenAiCompatClient};
 use anyhow::{Context, Result};
-use axum::{routing::get, routing::post, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use config::AppConfig;
 use prompts::PromptConfig;
 use sqlx::SqlitePool;
@@ -61,7 +64,10 @@ async fn main() -> Result<()> {
         ai_client: Arc::new(ai_client),
         prompts,
         chat_history_limit: cfg.ai.chat_history_limit,
-        context_manager: Mutex::new(ContextManager::default()),
+        context_manager: Mutex::new(ContextManager::new(
+            cfg.ai.context_cache_max_messages_per_mode,
+            cfg.ai.context_cache_max_modes,
+        )),
     });
 
     let cors = CorsLayer::new()
@@ -74,9 +80,26 @@ async fn main() -> Result<()> {
         .route("/api/openapi.yaml", get(handlers::openapi_yaml))
         .route("/api/chat", post(handlers::chat))
         .route(
-            "/api/sessions/:session_id/messages",
-            get(handlers::list_messages),
+            "/api/ai-providers",
+            get(handlers::list_ai_providers).post(handlers::create_ai_provider),
         )
+        .route(
+            "/api/ai-providers/:id",
+            get(handlers::get_ai_provider)
+                .put(handlers::update_ai_provider)
+                .delete(handlers::delete_ai_provider),
+        )
+        .route(
+            "/api/profiles",
+            get(handlers::list_profiles).post(handlers::create_profile),
+        )
+        .route(
+            "/api/profiles/:id",
+            get(handlers::get_profile)
+                .put(handlers::update_profile)
+                .delete(handlers::delete_profile),
+        )
+        .route("/api/messages", get(handlers::list_messages))
         .with_state(state)
         .layer(cors);
 

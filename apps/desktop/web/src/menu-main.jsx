@@ -1,4 +1,4 @@
-/** Menu window entry: transient buttons and lightweight history panel behavior. */
+/** Quick panel window entry: lightweight history access for avatar popup panel. */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -6,17 +6,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./menu.css";
 import { BACKEND_BASE_URL } from "./config";
-import { readActiveSessionId, writeActiveSessionId } from "./session";
-import { fetchSessionMessages } from "./api/chat";
+import { fetchConversationMessages } from "./api/chat";
 
 const AUTO_HIDE_MS = 5000;
 const FADE_MS = 200;
 const HISTORY_PAGE_SIZE = 10;
 
 function MenuApp() {
-  const [mode, setMode] = useState("menu");
+  const [mode, setMode] = useState("panel");
   const [fading, setFading] = useState(false);
-  const [sessionId, setSessionId] = useState(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -26,7 +24,7 @@ function MenuApp() {
 
   const hideTimerRef = useRef(null);
   const fadeTimerRef = useRef(null);
-  const modeRef = useRef("menu");
+  const modeRef = useRef("panel");
   const aiModeRef = useRef("default");
   const historyListRef = useRef(null);
 
@@ -42,7 +40,7 @@ function MenuApp() {
   }
 
   function resetMenuCountdown() {
-    if (modeRef.current !== "menu") {
+    if (modeRef.current !== "panel") {
       return;
     }
 
@@ -69,25 +67,20 @@ function MenuApp() {
     setLoadingMoreHistory(false);
   }
 
-  async function loadHistoryPage({ reset = false } = {}) {
-    let effectiveSessionId = sessionId;
-    if (typeof effectiveSessionId !== "number") {
-      try {
-        const sid = await invoke("get_active_session_id", { mode: aiModeRef.current });
-        if (typeof sid === "number") {
-          effectiveSessionId = sid;
-          setSessionId(sid);
-        }
-      } catch {
-        // no-op
+  async function syncModeFromTauri() {
+    try {
+      const current = await invoke("get_ai_mode");
+      if (typeof current?.mode === "string") {
+        setAiMode(current.mode);
+        aiModeRef.current = current.mode;
       }
+    } catch {
+      // no-op
     }
+    return aiModeRef.current;
+  }
 
-    if (typeof effectiveSessionId !== "number") {
-      resetHistoryState();
-      return;
-    }
-
+  async function loadHistoryPage({ reset = false } = {}) {
     if (!reset) {
       if (!hasMoreHistory || loadingMoreHistory) {
         return;
@@ -96,8 +89,7 @@ function MenuApp() {
     }
 
     const beforeId = reset ? null : historyCursor;
-    const data = await fetchSessionMessages(BACKEND_BASE_URL, {
-      sessionId: effectiveSessionId,
+    const data = await fetchConversationMessages(BACKEND_BASE_URL, {
       limit: HISTORY_PAGE_SIZE,
       mode: aiModeRef.current,
       beforeId
@@ -141,6 +133,7 @@ function MenuApp() {
     clearTimers();
 
     try {
+      await syncModeFromTauri();
       await invoke("open_history_panel");
       resetHistoryState();
       await loadHistoryPage({ reset: true });
@@ -158,22 +151,14 @@ function MenuApp() {
     }
   }
 
-  async function onSettingsClick() {
-    try {
-      await invoke("set_bubble_text", { text: "设置功能开发中" });
-    } catch {
-      // no-op
-    }
-  }
-
   async function onCloseHistory() {
     try {
       await invoke("hide_menu_window");
     } catch {
       // no-op
     }
-    setMode("menu");
-    modeRef.current = "menu";
+    setMode("panel");
+    modeRef.current = "panel";
     resetHistoryState();
     setFading(false);
     clearTimers();
@@ -186,40 +171,15 @@ function MenuApp() {
 
     const bootstrap = async () => {
       try {
-        const current = await invoke("get_ai_mode");
-        if (typeof current?.mode === "string") {
-          setAiMode(current.mode);
-          aiModeRef.current = current.mode;
-          let activeSid = null;
-          try {
-            activeSid = await invoke("get_active_session_id", { mode: current.mode });
-          } catch {
-            // no-op
-          }
-          const fallbackSid = readActiveSessionId(current.mode);
-          setSessionId(typeof activeSid === "number" ? activeSid : fallbackSid);
-        }
+        await syncModeFromTauri();
       } catch {
         // no-op
       }
 
-      unlistenShow = await listen("menu:show", async (event) => {
-        const sid = event.payload?.sessionId ?? event.payload?.session_id ?? null;
-        const next = typeof sid === "number" ? sid : readActiveSessionId(aiModeRef.current);
-        setSessionId(next);
-        if (typeof next === "number") {
-          writeActiveSessionId(aiModeRef.current, next);
-          try {
-            await invoke("set_active_session_id", {
-              mode: aiModeRef.current,
-              session_id: next
-            });
-          } catch {
-            // no-op
-          }
-        }
-        setMode("menu");
-        modeRef.current = "menu";
+      unlistenShow = await listen("menu:show", async () => {
+        await syncModeFromTauri();
+        setMode("panel");
+        modeRef.current = "panel";
         setFading(false);
         resetHistoryState();
         resetMenuCountdown();
@@ -234,14 +194,6 @@ function MenuApp() {
         if (typeof nextMode === "string") {
           setAiMode(nextMode);
           aiModeRef.current = nextMode;
-          let activeSid = null;
-          try {
-            activeSid = await invoke("get_active_session_id", { mode: nextMode });
-          } catch {
-            // no-op
-          }
-          const fallbackSid = readActiveSessionId(nextMode);
-          setSessionId(typeof activeSid === "number" ? activeSid : fallbackSid);
           resetHistoryState();
         }
       });
@@ -262,18 +214,6 @@ function MenuApp() {
       }
     };
   }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        void invoke("hide_pet");
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   const historyContent = useMemo(() => {
     if (!messages.length) {
       return <p className="history-empty">暂无历史消息</p>;
@@ -289,13 +229,10 @@ function MenuApp() {
 
   return (
     <main className="menu-root" onMouseEnter={resetMenuCountdown} onMouseMove={resetMenuCountdown}>
-      {mode === "menu" ? (
+      {mode === "panel" ? (
         <section className={`menu-capsule ${fading ? "fading" : ""}`}>
           <button className="capsule-btn" type="button" onClick={onHistoryClick}>
-            {loadingHistory ? "..." : "h"}
-          </button>
-          <button className="capsule-btn" type="button" onClick={onSettingsClick}>
-            s
+            {loadingHistory ? "..." : "历"}
           </button>
         </section>
       ) : (

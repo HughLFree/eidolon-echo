@@ -16,6 +16,52 @@
 
 注意：`ref/` 是参考代码目录，已加入 `.gitignore`，不属于主工程结构。
 
+开发手册见：[DEVELOPMENT.md](./DEVELOPMENT.md)。
+
+## 当前功能说明
+
+- AI 双模式：
+  - `default`：轻量对话，消息只保存在内存缓存，不写数据库消息表。
+  - `roleplay`：带记忆对话，消息会写入数据库，并在冷启动/翻页时回填缓存。
+- 会话与历史：
+  - 按 `mode -> profile -> latest conversation(updated_at)` 解析当前会话。
+  - 历史接口：`GET /api/messages?mode=...&limit=...&before_id=...`。
+  - 历史列表最新消息在上，支持滚动分页加载更早消息。
+- 上下文拼接：
+  - 系统提示词优先使用 `profiles.system_prompt`，为空时回退到文件 prompt。
+  - 上下文历史优先从内存缓存读取，不足时再从数据库补齐。
+  - 缓存键按 `conversation_id` 管理，避免多会话串上下文。
+- 设置中心：
+  - 支持 provider（当前主用 DeepSeek）与 profile（default/roleplay）配置。
+  - 可配置温度、max_tokens、头像路径、提示词、context_limit。
+  - 配置保存后写入数据库，后续请求按数据库配置生效。
+- 桌面端交互：
+  - 托盘支持模式切换、设置中心、最小化/恢复、退出。
+  - 多窗口模型：`main/chat/bubble/menu/settings`，窗口职责分离。
+
+## 各目录功能说明
+
+- `apps/backend`：后端服务（Axum + SQLite + AI client）
+  - `config/`：默认运行配置（服务端口、provider、缓存参数等）
+  - `migrations/`：数据库 schema 与结构迁移
+  - `openapi/`：OpenAPI 描述
+  - `docs/`：面向开发者的接口文档
+  - `prompts/`：默认系统提示词与上下文提示词文件
+  - `src/ai/`：AI 抽象层、OpenAI-Compatible 客户端、上下文缓存管理
+  - `src/db/`：按资源拆分的数据访问层（conversations/messages/profiles/providers）
+  - `src/handlers/`：HTTP handler 层（chat、profiles、providers、health）
+  - `src/main.rs`：后端入口，组装配置、路由、状态
+- `apps/desktop/src-tauri`：桌面壳与窗口生命周期管理
+  - `src/desktop_pet/`：桌宠域逻辑（命令、状态、窗口管理、托盘菜单）
+  - `src/overlay/`：平台相关窗口行为（macOS/windows/fallback）
+  - `capabilities/`：Tauri 权限能力声明
+- `apps/desktop/web`：前端页面与交互逻辑（React + Vite）
+  - `src/api/`：后端 API 调用封装
+  - `src/*-main.jsx`：各窗口入口（main/chat/bubble/menu/settings）
+  - `*.html`：多窗口页面挂载点
+- `apps/backend/data`：本地 SQLite 数据库文件目录（运行时生成）
+
+
 ## 工作区结构（当前）
 
 ```text
@@ -26,12 +72,14 @@
 │   │   ├── config/default.toml
 │   │   ├── docs/http-api.md
 │   │   ├── migrations/0001_init.sql
+│   │   ├── migrations/0002_conversation_ids_to_integer.sql
 │   │   ├── openapi/openapi.yaml
 │   │   └── src
 │   │       ├── ai/
 │   │       ├── config.rs
+│   │       ├── db/
 │   │       ├── db.rs
-│   │       ├── handlers.rs
+│   │       ├── handlers/
 │   │       └── main.rs
 │   └── desktop
 │       ├── src-tauri
@@ -43,9 +91,10 @@
 │       │       │   │   ├── avatar.rs
 │       │       │   │   ├── chat.rs
 │       │       │   │   ├── menu.rs
+│       │       │   │   ├── settings.rs
 │       │       │   │   └── overlay.rs
 │       │       │   ├── state.rs
-│       │       │   ├── windows.rs
+│       │       │   ├── window_manager.rs
 │       │       │   └── mod.rs
 │       │       ├── overlay
 │       │       │   ├── macos.rs
@@ -58,6 +107,7 @@
 │           ├── chat.html           # input window
 │           ├── bubble.html         # reply bubble window
 │           ├── menu.html           # menu/history window
+│           ├── settings.html       # settings center window
 │           ├── src/
 │           └── vite.config.js
 └── README.md
@@ -70,7 +120,7 @@
 ### 优点
 
 - 分层清晰：`backend` / `web` / `src-tauri` 职责边界明确。
-- 桌面域模型可读性较好：`desktop_pet` 里按 `commands + state + windows` 组织。
+- 桌面域模型可读性较好：`desktop_pet` 里按 `commands + state + window_manager` 组织。
 - 平台能力隔离正确：`overlay/mod.rs` 通过 `cfg` 分发到 `macos/windows/fallback`。
 - 多窗口职责清楚：`main(形象) + chat(输入) + bubble(回复) + menu(菜单)`。
 
@@ -115,31 +165,33 @@ xcode-select --install
 ### 2) 配置 API Key
 
 ```bash
-cp apps/backend/.env.example apps/backend/.env.local
-export DEEPSEEK_API_KEY="你的 DeepSeek Key"
-# 可选
-export OPENAI_API_KEY="你的 OpenAI Key"
+# 直接编辑默认环境文件
+# apps/backend/.env.default
 ```
 
 说明：
 
 - 默认配置在 `apps/backend/config/default.toml`
+- 默认环境变量文件：`apps/backend/.env.default`
+- 数据库迁移会在启动时自动执行（`sqlx` migrator）。
 - 默认 provider 是 `deepseek`
 - `api_key` 为空时会读取 `api_key_env` 指定环境变量
 - `ai.chat_history_limit` 控制每次发给模型的历史消息条数（默认 12）
+- `ai.context_cache_max_messages_per_mode` 控制每个会话缓存的消息上限（默认 100）
+- `ai.context_cache_max_modes` 控制内存中会话缓存总量上限（LRU 淘汰，默认 128）
 - `ai.providers.<provider>.temperature` 控制采样温度（默认 0.7）
 - `ai.providers.<provider>.max_tokens` 控制回复最大 token（可选，默认不限制）
 
 可选：配置系统指令和上下文 prompt（后端会自动注入到每次 `/api/chat` 请求）：
 
 ```bash
-cp apps/backend/prompts/system_prompt.example.md apps/backend/prompts/system_prompt.local.md
-cp apps/backend/prompts/context_prompt.example.md apps/backend/prompts/context_prompt.local.md
+# 直接编辑默认文件
+# apps/backend/prompts/system_prompt.default.md
+# apps/backend/prompts/context_prompt.default.md
 ```
 
-- 默认读取：`apps/backend/prompts/system_prompt.local.md` 和 `apps/backend/prompts/context_prompt.local.md`
+- 默认读取：`apps/backend/prompts/system_prompt.default.md` 和 `apps/backend/prompts/context_prompt.default.md`
 - 也可通过环境变量覆盖路径：`SYSTEM_PROMPT_FILE`、`CONTEXT_PROMPT_FILE`
-- `.local` prompt 文件已加入 `.gitignore`
 
 ### 3) 启动后端
 
@@ -184,7 +236,10 @@ VITE_BACKEND_BASE_URL=http://127.0.0.1:3001
 - `chat` 窗口：输入框（发送消息）
 - `bubble` 窗口：回复气泡展示
 - `menu` 窗口：菜单和历史
-- `session_id` 由前端本地管理（`localStorage`）
+- `settings` 窗口：设置中心（托盘菜单打开）
+- 当前会话由后端数据库按 `mode -> profile -> latest conversation(updated_at)` 解析
+- 前端/Tauri 不再保存 active conversation id 作为真相源
+- 历史消息接口为 `GET /api/messages?mode=...&limit=...&before_id=...`
 
 ## CORS 说明
 

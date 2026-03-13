@@ -1,7 +1,7 @@
 //! Menu-related commands: show/hide menu panel, keepalive and history mode transitions.
 
-use super::super::state::{AnchorRect, MenuMode, MenuShowPayload, OverlayState};
-use super::super::windows::sync_menu_position;
+use super::super::state::{AnchorRect, MenuMode, OverlayState};
+use super::super::window_manager::sync_menu_position;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -10,7 +10,6 @@ pub fn toggle_avatar_menu(
     app: AppHandle,
     state: State<Mutex<OverlayState>>,
     anchor: AnchorRect,
-    session_id: Option<i64>,
 ) -> Result<(), String> {
     let menu = app
         .get_webview_window("menu")
@@ -23,7 +22,6 @@ pub fn toggle_avatar_menu(
             false
         } else {
             overlay.anchor = Some(anchor);
-            overlay.session_id = session_id;
             overlay.menu_visible = true;
             overlay.menu_mode = MenuMode::Buttons;
             true
@@ -39,7 +37,7 @@ pub fn toggle_avatar_menu(
     menu.show().map_err(|e| e.to_string())?;
     menu.set_ignore_cursor_events(false)
         .map_err(|e| e.to_string())?;
-    menu.emit("menu:show", MenuShowPayload { session_id })
+    menu.emit("menu:show", ())
         .map_err(|e| e.to_string())?;
 
     Ok(())

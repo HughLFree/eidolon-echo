@@ -1,6 +1,6 @@
 //! Chat-related commands: bubble updates.
 
-use super::super::windows::sync_bubble_position;
+use super::super::window_manager::sync_bubble_position;
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]

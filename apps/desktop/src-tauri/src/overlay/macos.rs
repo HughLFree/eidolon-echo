@@ -7,7 +7,7 @@ use std::{
 
 use tauri::{AppHandle, Manager, WebviewWindow};
 use tauri_nspanel::{
-    CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt, tauri_panel,
+    tauri_panel, CollectionBehavior, ManagerExt, PanelLevel, StyleMask, WebviewWindowExt,
 };
 
 tauri_panel! {
@@ -25,12 +25,9 @@ const CHILD_WINDOW_LABELS: &[&str] = &["chat"];
 
 fn configure_panel(window: &WebviewWindow, initial_level: PanelLevel) -> Result<(), String> {
     let label = window.label().to_string();
-    let panel = window.to_panel::<DesktopPetPanel>().map_err(|e| {
-        format!(
-            "failed to convert '{}' to NSPanel: {e}",
-            window.label()
-        )
-    })?;
+    let panel = window
+        .to_panel::<DesktopPetPanel>()
+        .map_err(|e| format!("failed to convert '{}' to NSPanel: {e}", window.label()))?;
     panel.set_collection_behavior(
         CollectionBehavior::new()
             .can_join_all_spaces()
@@ -87,12 +84,10 @@ fn attach_child_panels(app: &AppHandle) -> Result<(), String> {
         if child_panel.as_panel().parentWindow().is_none() {
             // SAFETY: NSWindow child attachment must run on the main thread; caller guarantees this.
             unsafe {
-                main_panel
-                    .as_panel()
-                    .addChildWindow_ordered(
-                        child_panel.as_panel(),
-                        tauri_nspanel::objc2_app_kit::NSWindowOrderingMode::Above,
-                    );
+                main_panel.as_panel().addChildWindow_ordered(
+                    child_panel.as_panel(),
+                    tauri_nspanel::objc2_app_kit::NSWindowOrderingMode::Above,
+                );
             }
         }
     }

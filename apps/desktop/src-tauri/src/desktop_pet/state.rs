@@ -68,22 +68,25 @@ impl WindowVisibilityState {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct OverlayState {
     pub anchor: Option<AnchorRect>,
-    pub session_id: Option<i64>,
     pub menu_visible: bool,
     pub menu_mode: MenuMode,
     pub tray_restore_visibility: Option<WindowVisibilityState>,
     pub ai_role_mode: AiRoleMode,
-    pub default_mode_session_id: Option<i64>,
-    pub roleplay_mode_session_id: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MenuShowPayload {
-    pub session_id: Option<i64>,
+impl Default for OverlayState {
+    fn default() -> Self {
+        Self {
+            anchor: None,
+            menu_visible: false,
+            menu_mode: MenuMode::Buttons,
+            tray_restore_visibility: None,
+            ai_role_mode: AiRoleMode::Default,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,22 +101,6 @@ impl From<AiRoleMode> for AiModePayload {
         Self {
             mode,
             avatar_png: mode.avatar_png().to_string(),
-        }
-    }
-}
-
-impl OverlayState {
-    pub fn active_session_id(&self, mode: AiRoleMode) -> Option<i64> {
-        match mode {
-            AiRoleMode::Default => self.default_mode_session_id,
-            AiRoleMode::Roleplay => self.roleplay_mode_session_id,
-        }
-    }
-
-    pub fn set_active_session_id(&mut self, mode: AiRoleMode, session_id: Option<i64>) {
-        match mode {
-            AiRoleMode::Default => self.default_mode_session_id = session_id,
-            AiRoleMode::Roleplay => self.roleplay_mode_session_id = session_id,
         }
     }
 }

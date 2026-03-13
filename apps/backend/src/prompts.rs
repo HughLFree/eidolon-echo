@@ -11,14 +11,9 @@ pub struct PromptConfig {
 
 impl PromptConfig {
     pub fn load() -> Result<Self> {
-        let system_prompt = load_prompt(
-            "SYSTEM_PROMPT_FILE",
-            "prompts/system_prompt.local.md",
-        )?;
-        let context_prompt = load_prompt(
-            "CONTEXT_PROMPT_FILE",
-            "prompts/context_prompt.local.md",
-        )?;
+        let system_prompt = load_prompt("SYSTEM_PROMPT_FILE", "prompts/system_prompt.default.md")?;
+        let context_prompt =
+            load_prompt("CONTEXT_PROMPT_FILE", "prompts/context_prompt.default.md")?;
 
         Ok(Self {
             system_prompt,
@@ -33,8 +28,8 @@ fn load_prompt(env_key: &str, default_relative_path: &str) -> Result<Option<Stri
             continue;
         }
 
-        let content =
-            fs::read_to_string(&path).with_context(|| format!("failed to read prompt file: {path}"))?;
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read prompt file: {path}"))?;
         let trimmed = content.trim();
         if !trimmed.is_empty() {
             return Ok(Some(trimmed.to_string()));

@@ -8,12 +8,11 @@ async function parseJsonOrThrow(response) {
   return await response.json();
 }
 
-export async function sendChatMessage(baseUrl, { sessionId, message, mode }) {
+export async function sendChatMessage(baseUrl, { message, mode }) {
   const response = await fetch(`${baseUrl}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      session_id: sessionId,
       message,
       mode: mode || "default"
     })
@@ -22,7 +21,7 @@ export async function sendChatMessage(baseUrl, { sessionId, message, mode }) {
   return await parseJsonOrThrow(response);
 }
 
-export async function fetchSessionMessages(baseUrl, { sessionId, limit = 50, mode = "default", beforeId = null }) {
+export async function fetchConversationMessages(baseUrl, { limit = 50, mode = "default", beforeId = null }) {
   const params = new URLSearchParams({
     limit: String(limit),
     mode: mode || "default"
@@ -30,6 +29,6 @@ export async function fetchSessionMessages(baseUrl, { sessionId, limit = 50, mod
   if (typeof beforeId === "number" && Number.isFinite(beforeId)) {
     params.set("before_id", String(beforeId));
   }
-  const response = await fetch(`${baseUrl}/api/sessions/${sessionId}/messages?${params.toString()}`);
+  const response = await fetch(`${baseUrl}/api/messages?${params.toString()}`);
   return await parseJsonOrThrow(response);
 }

@@ -1,14 +1,15 @@
-//! In-memory conversation context manager for role modes.
+//! In-memory conversation context manager keyed by conversation id.
 
-use super::{AiRoleMode, ChatMessage};
+use super::ChatMessage;
 use crate::db::StoredMessage;
 use chrono::Utc;
 use std::collections::{HashMap, VecDeque};
 
-const DEFAULT_MODE_CONTEXT_WINDOW: usize = 10;
+const DEFAULT_MAX_MESSAGES_PER_CONVERSATION: usize = 100;
+const DEFAULT_MAX_CACHED_CONVERSATIONS: usize = 128;
 
 #[derive(Debug, Clone, Copy)]
-pub struct RoleplayCacheMeta {
+pub struct ConversationCacheMeta {
     pub hydrated: bool,
     pub db_exhausted: bool,
     pub cached_len: usize,
@@ -16,52 +17,62 @@ pub struct RoleplayCacheMeta {
 }
 
 #[derive(Debug, Clone)]
-struct SessionContext {
+struct ConversationContext {
     messages: VecDeque<StoredMessage>,
-    roleplay_hydrated: bool,
-    roleplay_db_exhausted: bool,
+    db_hydrated: bool,
+    db_exhausted: bool,
 }
 
-impl SessionContext {
-    fn new(mode: AiRoleMode) -> Self {
-        let roleplay = mode == AiRoleMode::Roleplay;
+impl ConversationContext {
+    fn new() -> Self {
         Self {
             messages: VecDeque::new(),
-            roleplay_hydrated: !roleplay,
-            roleplay_db_exhausted: !roleplay,
+            db_hydrated: false,
+            db_exhausted: false,
         }
     }
 }
 
 #[derive(Debug)]
 pub struct ContextManager {
-    sessions: HashMap<(i64, AiRoleMode), SessionContext>,
-    next_session_id: i64,
+    conversation_contexts: HashMap<i64, ConversationContext>,
+    conversation_last_access: HashMap<i64, u64>,
+    access_tick: u64,
+    max_messages_per_conversation: usize,
+    max_cached_conversations: usize,
     next_message_id: i64,
 }
 
 impl Default for ContextManager {
     fn default() -> Self {
-        Self {
-            sessions: HashMap::new(),
-            next_session_id: 1_000_000,
-            next_message_id: 1,
-        }
+        Self::new(
+            DEFAULT_MAX_MESSAGES_PER_CONVERSATION,
+            DEFAULT_MAX_CACHED_CONVERSATIONS,
+        )
     }
 }
 
 impl ContextManager {
+    pub fn new(max_messages_per_conversation: usize, max_cached_conversations: usize) -> Self {
+        Self {
+            conversation_contexts: HashMap::new(),
+            conversation_last_access: HashMap::new(),
+            access_tick: 0,
+            max_messages_per_conversation: max_messages_per_conversation.max(1),
+            max_cached_conversations: max_cached_conversations.max(1),
+            next_message_id: 1,
+        }
+    }
+
     pub fn prepare_chat_messages(
         &mut self,
-        session_id: Option<i64>,
-        mode: AiRoleMode,
+        conversation_id: i64,
         user_message: &str,
         system_prompt: Option<&str>,
         context_prompt: Option<&str>,
-        roleplay_history_limit: usize,
-    ) -> (i64, Vec<ChatMessage>) {
-        let sid = self.ensure_session_id(session_id);
-        let session = self.ensure_session_context(sid, mode);
+        context_history_limit: usize,
+    ) -> Vec<ChatMessage> {
+        let context = self.ensure_conversation_context(conversation_id);
 
         let mut messages = Vec::new();
 
@@ -79,13 +90,10 @@ impl ContextManager {
             });
         }
 
-        let history_window = match mode {
-            AiRoleMode::Default => DEFAULT_MODE_CONTEXT_WINDOW,
-            AiRoleMode::Roleplay => roleplay_history_limit.saturating_mul(2),
-        };
+        let history_window = context_history_limit.max(1);
 
-        let start = session.messages.len().saturating_sub(history_window);
-        for msg in session.messages.iter().skip(start) {
+        let start = context.messages.len().saturating_sub(history_window);
+        for msg in context.messages.iter().skip(start) {
             messages.push(ChatMessage {
                 role: msg.role.clone(),
                 content: msg.content.clone(),
@@ -97,13 +105,12 @@ impl ContextManager {
             content: user_message.to_string(),
         });
 
-        (sid, messages)
+        messages
     }
 
     pub fn record_exchange(
         &mut self,
-        session_id: i64,
-        mode: AiRoleMode,
+        conversation_id: i64,
         user_content: &str,
         assistant_content: &str,
     ) {
@@ -112,37 +119,47 @@ impl ContextManager {
         let assistant_id = self.next_message_id;
         self.next_message_id += 1;
 
-        let session = self.ensure_session_context(session_id, mode);
+        let max_messages_per_conversation = self.max_messages_per_conversation;
+        let context = self.ensure_conversation_context(conversation_id);
 
-        session.messages.push_back(StoredMessage {
+        context.messages.push_back(StoredMessage {
             id: user_id,
-            session_id,
+            conversation_id,
             role: "user".to_string(),
             content: user_content.to_string(),
             created_at: Utc::now(),
         });
-        session.messages.push_back(StoredMessage {
+        context.messages.push_back(StoredMessage {
             id: assistant_id,
-            session_id,
+            conversation_id,
             role: "assistant".to_string(),
             content: assistant_content.to_string(),
             created_at: Utc::now(),
         });
+        context.db_hydrated = true;
+        if Self::trim_conversation_messages(context, max_messages_per_conversation) {
+            // Oldest records may be reloaded from DB later after cap eviction.
+            context.db_exhausted = false;
+        }
     }
 
     /// Returns history ordered by newest -> oldest.
     pub fn list_cached_messages_desc(
-        &self,
-        session_id: i64,
-        mode: AiRoleMode,
+        &mut self,
+        conversation_id: i64,
         limit: usize,
         before_id: Option<i64>,
     ) -> Vec<StoredMessage> {
-        let Some(session) = self.sessions.get(&(session_id, mode)) else {
+        if !self.conversation_contexts.contains_key(&conversation_id) {
             return Vec::new();
-        };
+        }
+        self.touch_conversation_key(conversation_id);
+        let context = self
+            .conversation_contexts
+            .get(&conversation_id)
+            .expect("conversation context exists after contains");
 
-        session
+        context
             .messages
             .iter()
             .rev()
@@ -152,64 +169,71 @@ impl ContextManager {
             .collect()
     }
 
-    pub fn roleplay_cache_meta(&self, session_id: i64) -> RoleplayCacheMeta {
-        let Some(session) = self.sessions.get(&(session_id, AiRoleMode::Roleplay)) else {
-            return RoleplayCacheMeta {
+    pub fn conversation_cache_meta(&mut self, conversation_id: i64) -> ConversationCacheMeta {
+        if !self.conversation_contexts.contains_key(&conversation_id) {
+            return ConversationCacheMeta {
                 hydrated: false,
                 db_exhausted: false,
                 cached_len: 0,
                 oldest_cached_id: None,
             };
-        };
+        }
+        self.touch_conversation_key(conversation_id);
+        let context = self
+            .conversation_contexts
+            .get(&conversation_id)
+            .expect("conversation context exists after contains");
 
-        RoleplayCacheMeta {
-            hydrated: session.roleplay_hydrated,
-            db_exhausted: session.roleplay_db_exhausted,
-            cached_len: session.messages.len(),
-            oldest_cached_id: session.messages.front().map(|m| m.id),
+        ConversationCacheMeta {
+            hydrated: context.db_hydrated,
+            db_exhausted: context.db_exhausted,
+            cached_len: context.messages.len(),
+            oldest_cached_id: context.messages.front().map(|m| m.id),
         }
     }
 
     /// Cold-start hydration from DB latest records.
-    pub fn hydrate_roleplay_latest_from_db(
+    pub fn hydrate_conversation_latest_from_db(
         &mut self,
-        session_id: i64,
+        conversation_id: i64,
         db_messages: Vec<StoredMessage>,
         db_exhausted: bool,
     ) {
         self.update_next_message_id_from_slice(&db_messages);
-        let session = self.ensure_session_context(session_id, AiRoleMode::Roleplay);
-        if session.messages.is_empty() {
-            session.messages = db_messages.into_iter().collect();
+        let max_messages_per_conversation = self.max_messages_per_conversation;
+        let context = self.ensure_conversation_context(conversation_id);
+        if context.messages.is_empty() {
+            context.messages = db_messages.into_iter().collect();
         }
-        session.roleplay_hydrated = true;
-        session.roleplay_db_exhausted = db_exhausted;
+        let trimmed = Self::trim_conversation_messages(context, max_messages_per_conversation);
+        context.db_hydrated = true;
+        // If we trimmed oldest entries due cap, keep DB backfill open.
+        context.db_exhausted = db_exhausted && !trimmed;
     }
 
-    /// Prepend older DB records into roleplay cache.
-    pub fn prepend_roleplay_older_from_db(
+    /// Prepend older DB records into mode cache.
+    pub fn prepend_conversation_older_from_db(
         &mut self,
-        session_id: i64,
+        conversation_id: i64,
         db_messages: Vec<StoredMessage>,
         db_exhausted: bool,
-    ) {
+    ) -> bool {
         self.update_next_message_id_from_slice(&db_messages);
-        let session = self.ensure_session_context(session_id, AiRoleMode::Roleplay);
+        let max_messages_per_conversation = self.max_messages_per_conversation;
+        let context = self.ensure_conversation_context(conversation_id);
+        let oldest_before = context.messages.front().map(|m| m.id);
         for message in db_messages.into_iter().rev() {
-            if session.messages.iter().any(|m| m.id == message.id) {
+            if context.messages.iter().any(|m| m.id == message.id) {
                 continue;
             }
-            session.messages.push_front(message);
+            context.messages.push_front(message);
         }
-        session.roleplay_hydrated = true;
-        if db_exhausted {
-            session.roleplay_db_exhausted = true;
+        let trimmed = Self::trim_conversation_messages(context, max_messages_per_conversation);
+        context.db_hydrated = true;
+        if db_exhausted && !trimmed {
+            context.db_exhausted = true;
         }
-    }
-
-    pub fn reserve_roleplay_history_db_sync(&self, _session_id: i64) {
-        // Reserved extension point:
-        // Roleplay mode history can be mirrored to DB in a future iteration.
+        context.messages.front().map(|m| m.id) != oldest_before
     }
 
     fn update_next_message_id_from_slice(&mut self, messages: &[StoredMessage]) {
@@ -218,19 +242,50 @@ impl ContextManager {
         }
     }
 
-    fn ensure_session_id(&mut self, session_id: Option<i64>) -> i64 {
-        if let Some(sid) = session_id {
-            return sid;
+    fn ensure_conversation_context(&mut self, conversation_id: i64) -> &mut ConversationContext {
+        if !self.conversation_contexts.contains_key(&conversation_id) {
+            self.conversation_contexts
+                .insert(conversation_id, ConversationContext::new());
         }
-
-        let sid = self.next_session_id;
-        self.next_session_id += 1;
-        sid
+        self.touch_conversation_key(conversation_id);
+        self.evict_lru_conversations(Some(conversation_id));
+        self.conversation_contexts
+            .get_mut(&conversation_id)
+            .expect("conversation context must exist after insertion")
     }
 
-    fn ensure_session_context(&mut self, session_id: i64, mode: AiRoleMode) -> &mut SessionContext {
-        self.sessions
-            .entry((session_id, mode))
-            .or_insert_with(|| SessionContext::new(mode))
+    fn trim_conversation_messages(
+        context: &mut ConversationContext,
+        max_messages_per_conversation: usize,
+    ) -> bool {
+        if context.messages.len() <= max_messages_per_conversation {
+            return false;
+        }
+        let overflow = context.messages.len() - max_messages_per_conversation;
+        for _ in 0..overflow {
+            let _ = context.messages.pop_front();
+        }
+        true
+    }
+
+    fn touch_conversation_key(&mut self, key: i64) {
+        self.access_tick = self.access_tick.wrapping_add(1);
+        self.conversation_last_access.insert(key, self.access_tick);
+    }
+
+    fn evict_lru_conversations(&mut self, pinned: Option<i64>) {
+        while self.conversation_contexts.len() > self.max_cached_conversations {
+            let oldest_key = self
+                .conversation_last_access
+                .iter()
+                .filter(|(key, _)| Some(**key) != pinned)
+                .min_by_key(|(_, tick)| **tick)
+                .map(|(key, _)| *key);
+            let Some(key) = oldest_key else {
+                break;
+            };
+            self.conversation_contexts.remove(&key);
+            self.conversation_last_access.remove(&key);
+        }
     }
 }

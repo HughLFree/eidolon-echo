@@ -24,7 +24,7 @@ body,
 
 .menu-capsule {
   width: 56px;
-  height: 128px;
+  height: 74px;
   border-radius: 999px;
   padding: 6px;
   display: flex;
@@ -46,7 +46,7 @@ body,
 .capsule-btn {
   border: 0;
   width: 36px;
-  height: 52px;
+  height: 46px;
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.82);
   color: #f9fafb;

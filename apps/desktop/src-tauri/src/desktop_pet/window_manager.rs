@@ -8,10 +8,17 @@ use crate::overlay;
 use std::sync::Mutex;
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, PhysicalPosition, PhysicalSize, Position,
-    Size, State, WindowEvent,
+    Size, State, WebviewUrl, WebviewWindowBuilder, WindowEvent,
 };
 
 const CHAT_GAP_PX: i32 = 2;
+const SETTINGS_LABEL: &str = "settings";
+const SETTINGS_URL: &str = "settings.html";
+const SETTINGS_TITLE: &str = "桌宠设置";
+const SETTINGS_WIDTH: f64 = 860.0;
+const SETTINGS_HEIGHT: f64 = 620.0;
+const SETTINGS_MIN_WIDTH: f64 = 720.0;
+const SETTINGS_MIN_HEIGHT: f64 = 520.0;
 
 fn logical_main_frame<R: tauri::Runtime>(
     main: &tauri::WebviewWindow<R>,
@@ -308,4 +315,34 @@ pub fn bootstrap_desktop_pet(app: &AppHandle) {
             }
         });
     }
+
+}
+
+pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
+    let settings = ensure_settings_window(app)?;
+
+    if !settings.is_visible().map_err(|e| e.to_string())? {
+        settings.show().map_err(|e| e.to_string())?;
+    }
+    settings.set_focus().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn ensure_settings_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+    if let Some(settings) = app.get_webview_window(SETTINGS_LABEL) {
+        return Ok(settings);
+    }
+
+    WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App(SETTINGS_URL.into()))
+        .title(SETTINGS_TITLE)
+        .inner_size(SETTINGS_WIDTH, SETTINGS_HEIGHT)
+        .min_inner_size(SETTINGS_MIN_WIDTH, SETTINGS_MIN_HEIGHT)
+        .resizable(true)
+        .always_on_top(false)
+        .decorations(true)
+        .transparent(false)
+        .skip_taskbar(false)
+        .visible(false)
+        .build()
+        .map_err(|e| e.to_string())
 }

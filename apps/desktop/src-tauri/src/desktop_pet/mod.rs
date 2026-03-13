@@ -2,7 +2,7 @@
 
 mod commands;
 mod state;
-mod windows;
+mod window_manager;
 
 use state::{AiModePayload, AiRoleMode, OverlayState};
 use std::{sync::Mutex, thread};
@@ -11,9 +11,9 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Manager,
 };
-use windows::{
-    bootstrap_desktop_pet, sync_bubble_position, sync_chat_position, sync_menu_position,
-    toggle_pet_windows,
+use window_manager::{
+    bootstrap_desktop_pet, open_settings_window, sync_bubble_position, sync_chat_position,
+    sync_menu_position, toggle_pet_windows,
 };
 
 fn bootstrap_overlay_deferred(app_handle: tauri::AppHandle) {
@@ -78,8 +78,12 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
         true,
         None::<&str>,
     )?;
+    let settings_item = MenuItem::with_id(app, "open-settings", "设置", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let tray_menu = Menu::with_items(app, &[&mode_submenu, &toggle_item, &quit_item])?;
+    let tray_menu = Menu::with_items(
+        app,
+        &[&mode_submenu, &settings_item, &toggle_item, &quit_item],
+    )?;
 
     let mut tray_builder = TrayIconBuilder::with_id("main-tray").menu(&tray_menu);
     if let Some(icon) = app.default_window_icon() {
@@ -106,6 +110,11 @@ fn setup_tray(app: &tauri::App) -> Result<(), tauri::Error> {
                 "toggle-visibility" => {
                     if let Err(error) = toggle_pet_windows(app) {
                         eprintln!("toggle tray visibility failed: {error}");
+                    }
+                }
+                "open-settings" => {
+                    if let Err(error) = open_settings_window(app) {
+                        eprintln!("open settings failed: {error}");
                     }
                 }
                 "quit" => {
@@ -140,14 +149,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::ai::get_ai_mode,
-            commands::ai::get_active_session_id,
-            commands::ai::set_active_session_id,
             commands::avatar::start_window_drag,
             commands::chat::set_bubble_text,
             commands::menu::toggle_avatar_menu,
             commands::menu::menu_keep_alive,
             commands::menu::open_history_panel,
             commands::menu::hide_menu_window,
+            commands::settings::open_settings_panel,
             commands::overlay::set_overlay_always_on_top,
             commands::avatar::hide_pet
         ])
