@@ -1,10 +1,15 @@
 # Eidolon-Echo
 
-Eidolon-Echo 是一个以 AI 对话、角色扮演与长期陪伴为核心的桌面应用。
+Eidolon-Echo 是一个以 AI 对话、角色陪伴为核心的桌面应用。
 
 它不是把 AI 当成“工具栏助手”来设计的。当前更接近一个会在桌面上陪伴你、并能以特定人格和你持续互动的角色。
 
-当前项目仍在持续开发中。`1.0` 版本只实现了基础能力，例如本地配置、基础对话、角色模式和历史保存；还没有完成这个项目真正想做的核心部分: 让 AI 在角色模式下更像一个真实的人，与用户建立更自然、更持续的互动关系。
+> [!IMPORTANT]
+> **核心目标（尚未完成）**
+> 
+> 当前项目仍在持续开发中。`1.0` 版本只实现了基础能力，例如本地配置、基础对话、角色模式和历史保存；**还没有完成这个项目真正想做的核心部分: 让 AI 在角色模式下更像一个真实的人，与用户建立更自然、更持续的互动关系。**
+
+---
 
 ## 它能做什么
 
@@ -17,14 +22,24 @@ Eidolon-Echo 是一个以 AI 对话、角色扮演与长期陪伴为核心的桌
 - 托盘菜单：切换模式、打开设置、最小化/恢复、退出
 - 本地运行：聊天记录和设置默认都保存在用户自己的电脑上
 
+---
+
 ## 当前状态
+
+> [!NOTE]
+> 当前优先支持 macOS。Windows / Linux 仍是实验状态。
 
 - 当前优先支持 macOS
 - Windows / Linux 还没有做完整验证，应视为实验状态
 - 项目仍在持续开发中，界面和行为可能继续调整
 - 当前版本主要验证了“能用”的基础链路，还没有完成“像真人一样长期陪伴”的核心体验目标
 
+---
+
 ## 使用前你需要知道
+
+> [!CAUTION]
+> `api_key` 当前以明文形式保存在本地数据库中。
 
 - `roleplay` 模式会把消息保存到本地 SQLite 数据库
 - `default` 模式不会把消息写入消息表
@@ -33,7 +48,12 @@ Eidolon-Echo 是一个以 AI 对话、角色扮演与长期陪伴为核心的桌
 
 如果你对本地隐私比较敏感，这些点需要先接受，再决定是否使用。
 
+---
+
 ## 开始使用
+
+> [!TIP]
+> 常规流程：启动应用 -> 打开设置中心 -> 填写 API -> 选择模式 -> 开始对话。
 
 如果你拿到的是已经打包好的版本：
 
@@ -47,6 +67,8 @@ Eidolon-Echo 是一个以 AI 对话、角色扮演与长期陪伴为核心的桌
 5. 开始对话
 
 如果你是开发者，或当前还没有可下载的正式构建，请直接看 [DEVELOPMENT.md](./DEVELOPMENT.md)。
+
+---
 
 ## 本地数据
 
@@ -69,6 +91,8 @@ Eidolon-Echo 是一个以 AI 对话、角色扮演与长期陪伴为核心的桌
 
 - 开发模式会清理 `apps/backend/data/chat.db`
 - 打包版会清理 `~/Library/Application Support/io.github.hughlfree.eidolonecho/backend/chat.db`
+
+---
 
 ## 卸载
 
@@ -96,6 +120,8 @@ rm -rf "$HOME/Library/Caches/io.github.hughlfree.eidolonecho"
 rm -rf "$HOME/Library/Logs/io.github.hughlfree.eidolonecho"
 rm -f "$HOME/Library/Preferences/io.github.hughlfree.eidolonecho.plist"
 ```
+
+---
 
 ## 项目文档
 
