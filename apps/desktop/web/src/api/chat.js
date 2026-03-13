@@ -21,6 +21,71 @@ export async function sendChatMessage(baseUrl, { message, mode }) {
   return await parseJsonOrThrow(response);
 }
 
+export async function sendChatMessageStream(baseUrl, { message, mode, onDelta }) {
+  const requestBody = {
+    message,
+    mode: mode || "default"
+  };
+
+  async function fallbackToNonStream() {
+    const data = await sendChatMessage(baseUrl, requestBody);
+    if (typeof onDelta === "function") {
+      await onDelta(data.reply || "");
+    }
+    return data;
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/api/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      // Fallback keeps chat available when stream route is not ready/restarted yet.
+      return await fallbackToNonStream();
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return await fallbackToNonStream();
+    }
+
+    const decoder = new TextDecoder("utf-8");
+    let reply = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = decoder.decode(value, { stream: true });
+      if (!chunk) {
+        continue;
+      }
+      reply += chunk;
+      if (typeof onDelta === "function") {
+        await onDelta(reply);
+      }
+    }
+
+    const tail = decoder.decode();
+    if (tail) {
+      reply += tail;
+      if (typeof onDelta === "function") {
+        await onDelta(reply);
+      }
+    }
+
+    return {
+      mode: mode || "default",
+      reply
+    };
+  } catch (_error) {
+    return await fallbackToNonStream();
+  }
+}
+
 export async function fetchConversationMessages(baseUrl, { limit = 50, mode = "default", beforeId = null }) {
   const params = new URLSearchParams({
     limit: String(limit),

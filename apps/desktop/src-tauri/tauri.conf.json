@@ -40,7 +40,7 @@
         "title": "AI Pet Bubble",
         "url": "bubble.html",
         "width": 320,
-        "height": 170,
+        "height": 192,
         "resizable": false,
         "alwaysOnTop": true,
         "decorations": false,

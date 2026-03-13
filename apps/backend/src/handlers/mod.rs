@@ -9,7 +9,7 @@ mod profiles;
 mod providers;
 mod runtime_ai;
 
-pub use chat::{chat, list_messages};
+pub use chat::{chat, chat_stream, list_messages};
 pub use health::{health, openapi_yaml};
 pub use profiles::{create_profile, delete_profile, get_profile, list_profiles, update_profile};
 pub use providers::{

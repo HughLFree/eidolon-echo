@@ -1,10 +1,6 @@
 -- Convert conversations.id / messages.conversation_id from TEXT to INTEGER.
 -- This keeps existing rows and is safe when stored ids are numeric strings.
 
-PRAGMA foreign_keys = OFF;
-
-BEGIN TRANSACTION;
-
 CREATE TABLE conversations_new (
   id INTEGER PRIMARY KEY,
   profile_id TEXT NOT NULL,
@@ -73,7 +69,3 @@ ON conversations(profile_id, updated_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_seq
 ON messages(conversation_id, seq);
-
-COMMIT;
-
-PRAGMA foreign_keys = ON;

@@ -1,17 +1,18 @@
 /** Chat window entry: dedicated input box for sending messages and showing bubble reply. */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./chat.css";
 import { BACKEND_BASE_URL } from "./config";
-import { sendChatMessage } from "./api/chat";
+import { sendChatMessageStream } from "./api/chat";
 
 function ChatApp() {
   const [input, setInput] = useState("");
   const [inputDisabled, setInputDisabled] = useState(false);
   const [aiMode, setAiMode] = useState("default");
+  const streamTokenRef = useRef(0);
 
   useEffect(() => {
     let unlistenMode;
@@ -50,10 +51,17 @@ function ChatApp() {
     }
   }
 
-  async function sendMessage(message) {
-    const data = await sendChatMessage(BACKEND_BASE_URL, {
+  async function sendMessageStream(message) {
+    const token = ++streamTokenRef.current;
+    const data = await sendChatMessageStream(BACKEND_BASE_URL, {
       message,
-      mode: aiMode
+      mode: aiMode,
+      onDelta: async (partialText) => {
+        if (streamTokenRef.current !== token) {
+          return;
+        }
+        await pushBubble(partialText);
+      }
     });
     const responseMode = typeof data.mode === "string" ? data.mode : aiMode;
     setAiMode(responseMode);
@@ -69,8 +77,7 @@ function ChatApp() {
     setInputDisabled(true);
 
     try {
-      const reply = await sendMessage(text);
-      await pushBubble(reply);
+      await sendMessageStream(text);
     } catch (error) {
       await pushBubble(`请求失败：${error.message}`);
     } finally {

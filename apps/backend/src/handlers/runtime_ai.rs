@@ -8,6 +8,14 @@ pub(super) async fn resolve_mode_ai_client(
     state: &Arc<AppState>,
     mode_profile: Option<&db::Profile>,
 ) -> anyhow::Result<Option<Arc<dyn AiClient>>> {
+    let maybe_client = resolve_mode_openai_compat_client(state, mode_profile).await?;
+    Ok(maybe_client.map(|client| Arc::new(client) as Arc<dyn AiClient>))
+}
+
+pub(super) async fn resolve_mode_openai_compat_client(
+    state: &Arc<AppState>,
+    mode_profile: Option<&db::Profile>,
+) -> anyhow::Result<Option<OpenAiCompatClient>> {
     let provider = if let Some(profile) = mode_profile {
         if let Some(provider_id) = profile.provider_id.as_deref() {
             db::get_ai_provider(&state.pool, provider_id).await?
@@ -42,14 +50,13 @@ pub(super) async fn resolve_mode_ai_client(
     let temperature = provider.temperature.unwrap_or(0.7).clamp(0.0, 2.0) as f32;
     let max_tokens = normalize_provider_max_tokens(provider.max_tokens);
 
-    let client = OpenAiCompatClient::new(
+    Ok(Some(OpenAiCompatClient::new(
         base_url,
         api_key,
         provider.model_name,
         temperature,
         max_tokens,
-    );
-    Ok(Some(Arc::new(client)))
+    )))
 }
 
 fn resolve_provider_api_key(raw: Option<&str>) -> anyhow::Result<String> {

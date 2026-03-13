@@ -25,6 +25,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 pub struct AppState {
     pub pool: SqlitePool,
     pub ai_client: Arc<dyn AiClient>,
+    pub default_openai_client: Arc<OpenAiCompatClient>,
     pub prompts: PromptConfig,
     pub chat_history_limit: i64,
     pub context_manager: Mutex<ContextManager>,
@@ -62,7 +63,8 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(AppState {
         pool,
-        ai_client: Arc::new(ai_client),
+        ai_client: Arc::new(ai_client.clone()),
+        default_openai_client: Arc::new(ai_client),
         prompts,
         chat_history_limit: cfg.ai.chat_history_limit,
         context_manager: Mutex::new(ContextManager::new(
@@ -80,6 +82,7 @@ async fn main() -> Result<()> {
         .route("/api/health", get(handlers::health))
         .route("/api/openapi.yaml", get(handlers::openapi_yaml))
         .route("/api/chat", post(handlers::chat))
+        .route("/api/chat/stream", post(handlers::chat_stream))
         .route(
             "/api/ai-providers",
             get(handlers::list_ai_providers).post(handlers::create_ai_provider),
